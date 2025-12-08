@@ -1,0 +1,74 @@
+{
+	"name": "${localWorkspaceFolderBasename}",
+	"dockerFile": "../.devcontainer/Dockerfile",
+	"build": {
+		"args": {
+			"BASE_IMAGE": "381491853486.dkr.ecr.us-east-1.amazonaws.com/ironbrain/ros2-pytorch:humble-pytorch2.3.0",
+			"ROS_DISTRO": "humble",
+			"USERNAME": "${localEnv:USER}"			
+		},
+		"target": "dev"
+		
+	},
+	"privileged": true,
+	"runArgs": [
+		"--network=host",
+		"--cap-add=SYS_PTRACE",
+		"--security-opt=seccomp:unconfined",
+		"--security-opt=apparmor:unconfined",
+		"-e",
+		"DISPLAY=${env:DISPLAY}",
+        "--shm-size=24G",
+		"--ipc=host",
+		"--pid=host",
+		"--ulimit=memlock=-1",
+		"--ulimit=stack=6710886",
+		"--gpus=all",
+		"--runtime=nvidia"		
+	],
+	
+	"remoteUser": "${localEnv:USER}",
+	"workspaceFolder": "/home/${localEnv:USER}/${localWorkspaceFolderBasename}",
+	"workspaceMount": "source=${localWorkspaceFolder},target=/home/${localEnv:USER}/${localWorkspaceFolderBasename},type=bind",
+	"containerEnv": {
+		"DISPLAY": "${localEnv:DISPLAY}", // for GUI applications
+		"SSH_AUTH_SOCK": "/ssh-agent",
+		"CYCLONEDDS_URI":"${localEnv:CYCLONEDDS_URI}",
+		"ROS_DOMAIN_ID":"${localEnv:ROS_DOMAIN_ID}"
+	},
+	"mounts": [
+		// "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind,consistency=cached",
+		"source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/DATA,target=/DATA,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/DEV,target=/DEV,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/Downloads,target=/Downloads,type=bind,consistency=cached",
+		"source=/mnt/,target=/mnt,type=bind,consistency=cached",
+		"source=/dev/shm,target=/dev/shm,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/DEV/dds_profiles,target=/home/${localEnv:USER}/DEV/dds_profiles,type=bind,consistency=cached"
+	
+	],
+	// "postCreateCommand": ["sudo sysctl -w net.core.rmem_max=2147483647",
+	// 					  "sudo sysctl net.ipv4.ipfrag_time=3",
+	// 					  "sudo sysctl net.ipv4.ipfrag_high_thresh=134217728"
+	// ],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"dotjoshjohnson.xml",
+				"zachflower.uncrustify",
+				"ms-python.python",
+				"ms-vscode.cpptools",
+				"redhat.vscode-yaml",
+				"ms-iot.vscode-ros",
+				"smilerobotics.urdf",
+				"streetsidesoftware.code-spell-checker",
+				"twxs.cmake",
+				"yzhang.markdown-all-in-one",
+				"mhutchie.git-graph",
+				"GitHub.copilot",
+				"ms-toolsai.jupyter"
+			]
+		}
+	}
+}

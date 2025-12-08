@@ -1,0 +1,8 @@
+tensorboard
+easydict
+onnx
+scikit-learn
+opencv-python==4.7.0.72
+numpy==1.26.4
+torchvision
+#mxnet -f https://dist.mxnet.io/python/cpu
