@@ -1,0 +1,43 @@
+# Auto-generated config file
+from easydict import EasyDict as edict
+
+config = edict()
+config.margin_list = (1.0, 0.0, 0.4)
+config.network = 'r50'
+config.resume = False
+config.save_all_states = True
+config.output = 'work_dirs/arcface_ratio_35'
+config.embedding_size = 512
+config.sample_rate = 1.0
+config.interclass_filtering_threshold = 0
+config.fp16 = True
+config.batch_size = 256
+config.optimizer = 'adamw'
+config.lr = 0.01
+config.weight_decay = 0.0001
+config.verbose = 2000
+config.frequent = 10
+config.dali = False
+config.dali_aug = False
+config.gradient_acc = 1
+config.seed = 2048
+config.num_workers = 2
+config.wandb_key = 'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+config.suffix_run_name = None
+config.using_wandb = False
+config.wandb_entity = 'entity'
+config.wandb_project = 'project'
+config.wandb_log_all = True
+config.save_artifacts = False
+config.wandb_resume = False
+config.momentum = 0.9
+config.rec = '/datasets/variants_dataset/train'
+config.val_targets = ['/datasets/variants_dataset/val', '/datasets/variants_dataset/train']
+config.num_classes = 63013
+config.num_image = 1446728
+config.num_epoch = 1
+config.warmup_epoch = 4
+config.batch_grid_tag = 'arcface_ratio_35'
+config.total_batch_size = 256
+config.warmup_step = 22604
+config.total_step = 5651

@@ -1,0 +1,28 @@
+2026-02-13 13:54:58,188 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-02-13 13:54:58,188 - INFO - Creating ROI dataset: ratio_100
+2026-02-13 14:00:43,896 - INFO - Training ArcFace on ratio_100
+2026-02-13 22:10:57,097 - INFO - Completed training for ratio_100 with results: {'best_acc': 0.9809054828539321}
+
+2026-02-14 17:53:42,191 - INFO - Creating ROI dataset: ratio_60
+2026-02-14 17:59:05,026 - INFO - Training ArcFace on ratio_60
+2026-02-14 19:37:33,250 - INFO - Completed training for ratio_60 with results: {'best_acc': 0.9753855401890031}
+
+2026-02-15 15:31:05,142 - INFO - Creating ROI dataset: ratio_40
+2026-02-15 15:31:07,185 - INFO - Training ArcFace on ratio_40
+2026-02-15 18:46:54,120 - INFO - Completed training for ratio_40 with results: {'best_acc': 0.9690590446809172}
+
+2026-02-15 20:52:11,101 - INFO - Creating ROI dataset: ratio_30
+2026-02-15 20:57:18,851 - INFO - Training ArcFace on ratio_30
+2026-02-16 03:36:15,827 - INFO - Completed training for ratio_30 with results: {'best_acc': 0.9674495889558326}
+
+2026-02-16 17:57:23,817 - INFO - Creating ROI dataset: ratio_25
+2026-02-16 17:57:30,209 - INFO - Training ArcFace on ratio_25
+2026-02-17 02:13:30,436 - INFO - Completed training for ratio_25 with results: {'best_acc': 0.9127360013699903}
+
+2026-02-18 15:53:07,625 - INFO - Creating ROI dataset: ratio_20
+2026-02-18 15:53:09,200 - INFO - Training ArcFace on ratio_20
+2026-02-18 22:27:38,522 - INFO - Completed training for ratio_20 with results: {'best_acc': 0.9000044580583499}
+
+2026-04-30 19:31:28,372 - INFO - Training ArcFace on ratio_15
+2026-05-01 06:14:30,883 - INFO - Completed training for ratio_15 with results: {'best_acc': 0.8957419858950062}

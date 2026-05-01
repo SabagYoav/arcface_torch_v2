@@ -164,6 +164,12 @@ cython_debug/
 site/
 mkdocs.yml
 
+# Training outputs
+work_dirs/
+
+# Large data files
+*.json
+
 # known file types
 # nn models
 *.onnx

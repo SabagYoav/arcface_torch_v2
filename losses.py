@@ -98,3 +98,51 @@ class CosFace(torch.nn.Module):
         logits[index, labels[index].view(-1)] = final_target_logit
         logits = logits * self.s
         return logits
+
+
+class BatchAllTripletLoss(torch.nn.Module):
+    """Batch-all triplet loss using an NxN pairwise distance matrix.
+
+    Enumerates all valid (anchor, positive, negative) triplets in the batch
+    and averages the margin losses over triplets with positive loss.
+
+    Uses cosine distance: d = 1 - cos_sim.
+    """
+
+    def __init__(self, margin: float = 1.0):
+        super().__init__()
+        self.margin = margin
+
+    def forward(self, embeddings: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        labels = labels.view(-1)
+        embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+
+        # NxN cosine similarity -> distance
+        dist_matrix = 1.0 - torch.mm(embeddings, embeddings.t())  # [N, N]
+
+        N = labels.size(0)
+        same_class = labels.unsqueeze(0).eq(labels.unsqueeze(1))  # [N, N]
+
+        # Positive mask: same class, exclude self
+        pos_mask = same_class.clone()
+        pos_mask.fill_diagonal_(False)
+
+        # Negative mask: different class
+        neg_mask = ~same_class
+
+        # Per-anchor mean positive distance and mean negative distance
+        num_pos = pos_mask.sum(dim=1).float().clamp(min=1.0)  # [N]
+        num_neg = neg_mask.sum(dim=1).float().clamp(min=1.0)  # [N]
+
+        mean_d_pos = (dist_matrix * pos_mask.float()).sum(dim=1) / num_pos  # [N]
+        mean_d_neg = (dist_matrix * neg_mask.float()).sum(dim=1) / num_neg  # [N]
+
+        # Triplet loss per anchor (balanced: one pos term, one neg term per anchor)
+        per_anchor_loss = torch.nn.functional.relu(mean_d_pos - mean_d_neg + self.margin)
+
+        # Only average over anchors that have at least one positive
+        valid = pos_mask.any(dim=1)
+        if valid.sum() == 0:
+            return (embeddings * 0).sum()  # zero loss, keeps grad graph
+
+        return per_anchor_loss[valid].mean()

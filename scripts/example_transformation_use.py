@@ -7,14 +7,7 @@ import numpy as np
 from torchvision import transforms
 from PIL import Image
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.custom_transforms import RemoveEyes, RemoveNose, RemoveMouth, MouthMask, RandomOneMask
 from torchvision.datasets import ImageFolder
-
-
-
-from insightface.app import FaceAnalysis
-
 
 transform = transforms.Compose([
         # ----------------------------------------
@@ -29,26 +22,6 @@ transform = transforms.Compose([
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomPosterize(bits=4, p=0.2),
         ], p=0.75),
-
-
-        # ----------------------------------------
-        # GROUP B: exactly ONE masking transform
-        # ----------------------------------------
-        # RandomOneMask(
-        #     masks=[
-        #         RemoveEyes(),
-        #         RemoveNose(),
-        #         RemoveMouth(),
-        #         MouthMask(),
-        #     ],
-        #     p=0.3,  # apply masks with 30% probability
-        # ),
-
-        # ----------------------------------------
-        # ALWAYS-ON TRANSFORMS
-        # ----------------------------------------
-        transforms.ToTensor(),
-        # transforms.Normalize([0.5]*3, [0.5]*3),
     ])
 
 class ScratchDataset():

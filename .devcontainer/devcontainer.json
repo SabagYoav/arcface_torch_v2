@@ -42,7 +42,8 @@
 		"source=/home/${localEnv:USER}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DATA,target=/DATA,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DEV,target=/DEV,type=bind,consistency=cached",
-		"source=/home/${localEnv:USER}/Downloads,target=/Downloads,type=bind,consistency=cached",
+		"source=/media/${localEnv:USER}/Yoav/datasets,target=/datasets,type=bind,consistency=cached",
+		"source=/media/,target=/media,type=bind,consistency=cached",
 		"source=/mnt/,target=/mnt,type=bind,consistency=cached",
 		"source=/dev/shm,target=/dev/shm,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DEV/dds_profiles,target=/home/${localEnv:USER}/DEV/dds_profiles,type=bind,consistency=cached"

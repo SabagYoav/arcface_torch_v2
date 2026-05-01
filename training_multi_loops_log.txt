@@ -1,0 +1,64 @@
+2026-03-14 13:19:58,419 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-14 13:19:58,420 - INFO - Creating ROI dataset: ratio_100
+2026-03-14 13:31:15,803 - INFO - Creating ROI dataset: ratio_60
+2026-03-14 13:41:52,826 - INFO - Creating ROI dataset: ratio_40
+2026-03-14 13:50:39,905 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-14 13:50:39,905 - INFO - Creating ROI dataset: ratio_100
+2026-03-14 13:51:52,674 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-14 13:51:52,674 - INFO - Creating ROI dataset: ratio_100
+2026-03-14 13:58:40,064 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-14 13:58:40,064 - INFO - Creating ROI dataset: ratio_100
+2026-03-14 14:09:50,305 - INFO - Creating ROI dataset: ratio_60
+2026-03-14 14:20:16,783 - INFO - Creating ROI dataset: ratio_40
+2026-03-15 09:12:37,154 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 09:12:37,154 - INFO - Creating ROI dataset: ratio_40
+2026-03-15 09:22:18,828 - INFO - Creating ROI dataset: ratio_30
+2026-03-15 09:32:16,404 - INFO - Creating ROI dataset: ratio_25
+2026-03-15 09:41:50,535 - INFO - Creating ROI dataset: ratio_20
+2026-03-15 12:41:08,552 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 12:41:08,552 - INFO - Creating ROI dataset: ratio_15
+2026-03-15 12:44:35,145 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 12:44:35,145 - INFO - Creating ROI dataset: ratio_15
+2026-03-15 12:46:28,594 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 12:46:28,594 - INFO - Creating ROI dataset: ratio_15
+2026-03-15 12:47:04,537 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 12:47:04,537 - INFO - Creating ROI dataset: ratio_15
+2026-03-15 12:50:44,543 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-15 12:50:44,543 - INFO - Creating ROI dataset: ratio_15
+2026-03-16 14:46:54,791 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-16 14:46:54,791 - INFO - Creating ROI dataset: ratio_40
+2026-03-16 14:47:27,984 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-16 14:47:27,984 - INFO - Creating ROI dataset: ratio_40
+2026-03-16 14:47:49,701 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-03-16 14:47:49,701 - INFO - Creating ROI dataset: ratio_40
+2026-04-30 06:24:13,107 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-04-30 06:24:13,107 - INFO - Creating ROI dataset: ratio_15
+2026-04-30 06:25:01,185 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-04-30 06:25:01,185 - INFO - Creating ROI dataset: ratio_15
+2026-04-30 14:03:51,911 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-04-30 14:03:51,911 - INFO - Creating ROI dataset: ratio_15
+2026-04-30 14:04:23,658 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-04-30 14:04:23,658 - INFO - Creating ROI dataset: ratio_15
+2026-04-30 14:13:56,564 - INFO - Training ArcFace on ratio_15
+2026-04-30 19:31:22,662 - INFO - This is a log file for training multi ROIs loops experiments.
+
+2026-04-30 19:31:22,662 - INFO - Creating ROI dataset: ratio_15
+2026-04-30 19:31:28,372 - INFO - Training ArcFace on ratio_15
+2026-05-01 06:14:30,883 - INFO - Completed training for ratio_15 with results: {'best_acc': 0.8957419858950062}

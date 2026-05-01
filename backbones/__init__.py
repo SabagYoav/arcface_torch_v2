@@ -1,6 +1,15 @@
 from .iresnet import iresnet18, iresnet34, iresnet50, iresnet100, iresnet200
 from .mobilefacenet import get_mbf
 
+def freeze_layers(backbone):
+    for name, param in backbone.named_parameters():
+        if "fc" not in name and "features" not in name:
+            param.requires_grad = False
+        else:
+            print(f"[INFO] Fine-tuning parameter: {name}")
+    return backbone
+
+
 
 def get_model(name, **kwargs):
     # resnet
@@ -17,6 +26,8 @@ def get_model(name, **kwargs):
     elif name == "r2060":
         from .iresnet2060 import iresnet2060
         return iresnet2060(False, **kwargs)
+
+
 
     elif name == "mbf":
         fp16 = kwargs.get("fp16", False)
