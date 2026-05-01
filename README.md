@@ -22,9 +22,9 @@ The **ROI ratio** controls how much of the face is visible to the student model.
 
 | Ratio | Visible Region |
 |-------|---------------|
-| 15%   | Eyes only |
-| 20-30% | Eyes + nose bridge |
-| 40-60% | Upper face |
+| 15%   | Narrow Eyes only |
+| 20-30% | Eyes only |
+| 40-60% | Eyes and nose |
 | 100%  | Full face |
 
 ROI crops are placed on a black canvas maintaining the original 112x112 image dimensions.
@@ -69,7 +69,7 @@ ROI crops are placed on a black canvas maintaining the original 112x112 image di
 ### Standard ArcFace training on a specific ROI ratio
 
 ```shell
-python train_v3_arcface.py configs/variants_config_ratio_40
+python train_v3_arcface.py configs/exp_glint360k_roi_*_r50_arcface.py
 ```
 
 ### Knowledge distillation (CLIP-style, partial → full face)
@@ -82,12 +82,6 @@ python train_v4_clip.py configs/glint360k_r50_clip
 
 ```shell
 python training_multi_loops.py
-```
-
-### Distributed training (multi-GPU)
-
-```shell
-torchrun --nproc_per_node=8 train_v3_arcface.py configs/variants_config_ratio_40
 ```
 
 ---
