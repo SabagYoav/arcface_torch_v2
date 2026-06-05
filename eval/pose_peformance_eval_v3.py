@@ -210,8 +210,8 @@ def save_df_in_temp_dir(df, save_path="/media/temp_eval_dataset/", src_root_pref
                     f_dst.write(f_src.read())
 
 
-def get_loader_from_df(df: pd.DataFrame, cfg, save_path:str): #TODO: check args type
-    save_df_in_temp_dir(df, save_path)
+def get_loader_from_df(df: pd.DataFrame, cfg, save_path:str, src_root_prefix:Path): #TODO: check args type
+    save_df_in_temp_dir(df, save_path, src_root_prefix=src_root_prefix)
     # Remove empty class directories that would cause ImageFolder to fail
     for d in Path(save_path).iterdir():
         if d.is_dir() and not any(d.iterdir()):
@@ -269,6 +269,7 @@ def batch_cross_accuracy(emb_a, lab_a, emb_b, lab_b, thresholds):
     best_acc, best_acc_thr = 0.0, None
     best_tar, best_tar_thr = 0.0, None
     best_far, best_far_thr = 1.0, None
+    tar_at_far_1e4 = 0.0
 
     for t in thresholds:
         tp = (pos > t).sum().float()
@@ -293,6 +294,10 @@ def batch_cross_accuracy(emb_a, lab_a, emb_b, lab_b, thresholds):
             best_far = far
             best_far_thr = t
             best_far_at_tar = tar
+        # TAR@FAR=1e-4
+        if far.item() <= 1e-4 and tar.item() > tar_at_far_1e4:
+            tar_at_far_1e4 = tar.item()
+
     results = {
         "best_acc": best_acc,
         "best_acc_thr": best_acc_thr,
@@ -301,7 +306,8 @@ def batch_cross_accuracy(emb_a, lab_a, emb_b, lab_b, thresholds):
         "best_tar_thr": best_tar_thr,
         "best_far": best_far,
         "best_far_thr": best_far_thr,
-        "best_far_at_tar": best_far_at_tar
+        "best_far_at_tar": best_far_at_tar,
+        "tar_at_far_1e4": tar_at_far_1e4,
     }
 
     return results
@@ -310,8 +316,7 @@ def batch_cross_accuracy(emb_a, lab_a, emb_b, lab_b, thresholds):
 def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
     backbone.eval()
 
-    #thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    thresholds = [0.2]
+    thresholds = torch.linspace(-0.2, 1.0, 600).tolist()
 
     accs = []
     acc_thrs = []
@@ -321,6 +326,7 @@ def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
     fars = []
     fars_at_tar = []
     far_thrs = []
+    tar_at_far_1e4_list = []
 
     for (img_a, lab_a), (img_b, lab_b) in zip(loader_a, loader_b):
 
@@ -345,6 +351,7 @@ def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
             fars.append(results["best_far"])
             fars_at_tar.append(results["best_far_at_tar"])
             far_thrs.append(results["best_far_thr"])
+            tar_at_far_1e4_list.append(results["tar_at_far_1e4"])
 
     mean_acc = sum(accs) / len(accs)
     mean_acc_thr = sum(acc_thrs) / len(acc_thrs)
@@ -354,6 +361,7 @@ def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
     mean_far = sum(fars) / len(fars)
     mean_far_at_mean_tar = sum(fars_at_tar) / len(fars_at_tar)
     mean_far_thr = sum(far_thrs) / len(far_thrs)
+    mean_tar_at_far_1e4 = sum(tar_at_far_1e4_list) / len(tar_at_far_1e4_list)
 
     results = {
         "mean_acc": mean_acc,
@@ -363,7 +371,8 @@ def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
         "mean_tar_thr": mean_tar_thr,
         "mean_far": mean_far,
         "mean_best_far_at_mean_tar": mean_far_at_mean_tar,
-        "mean_far_thr": mean_far_thr
+        "mean_far_thr": mean_far_thr,
+        "mean_tar_at_far_1e4": mean_tar_at_far_1e4,
     }
     
 
@@ -371,66 +380,87 @@ def cross_pose_test( loader_a, loader_b, backbone, device="cuda"):
 
 if __name__ == "__main__":
 
-    default_testset_root = "datasets/glint360k/imageFolder_split_narrow_eyes/test"
-    json_path = "data_analytics/eyes_test_set_pose_results.json"
-    config_fpath = "configs/exp_glint360k_roi_20_r50_arcface.py"
+    CASES = [
+        # {
+        #     "name": "fullface",
+        #     "json_path": "data_analytics/test_set_pose_results.json",
+        #     "model_path": "work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt",
+        #     "src_root_prefix": Path("/datasets/glint360k/imageFolder_split_fullface/"),
+        #     "config": "configs/config_glint360k_subset_fullface.py",
+        #     # JSON has /DATA_FP/... but actual data is at /datasets/...
+        #     "path_fix": lambda p: p.replace("/DATA_FP/", "/datasets/"),
+        # },
+        # {
+        #     "name": "eyes",
+        #     "json_path": "data_analytics/eyes_test_set_pose_results.json",
+        #     "model_path": "work_dirs/exp_glint360k_roi_20_r50_arcface/best_model.pt",
+        #     "src_root_prefix": Path("/datasets/glint360k/ROIs/ratio_20"),
+        #     "config": "configs/exp_glint360k_roi_20_r50_arcface.py",
+        #     "path_fix": None,
+        # },
+        {
+            "name": "narrow_eyes",
+            "json_path": "data_analytics/eyes_test_set_pose_results.json",
+            "model_path": "work_dirs/exp_glint360k_roi_15_r50_arcface/best_model.pt",
+            "src_root_prefix": Path("/datasets/glint360k/ROIs/ratio_15"),
+            "config": "configs/exp_glint360k_roi_15_r50_arcface.py",
+            "path_fix": None,
+        },
+    ]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--testset_root", default=default_testset_root, type=str)
-    parser.add_argument("--json_path", default=json_path, type=str)
     parser.add_argument("--batch_size", default=64, type=int)
-    parser.add_argument("--config", default=config_fpath, type=str) 
     args = parser.parse_args()
 
-    cfg = get_config(args.config)
-    args.testset_root = cfg.val_targets[0]  # override testset_root with config value
+    for case in CASES:
+        print(f"\n{'='*60}")
+        print(f"  CASE: {case['name']}")
+        print(f"{'='*60}")
+
+        cfg = get_config(case["config"])
+
+        df_5, df_5_10, df_10_20, df_30_90, df = split_by_yaw_ranges(case["json_path"])
+
+        # fix paths if needed (e.g. fullface JSON uses /DATA_FP/ prefix)
+        if case["path_fix"] is not None:
+            for d in [df_5, df_5_10, df_10_20, df_30_90, df]:
+                d["path"] = d["path"].apply(case["path_fix"])
+
+        df_5, df_5_10, df_10_20 = equalize_same_ids(df_5, df_5_10, df_10_20)
+
+        df_5 = limit_to_n_ids(df_5, 2500)
+        df_5_10 = limit_to_n_ids(df_5_10, 2500)
+        df_10_20 = limit_to_n_ids(df_10_20, 2500)
+
+        # load model
+        backbone = load_backbone(case["model_path"])
+
+        # load dataloaders
+        prefix = case["name"]
+        src_root = case["src_root_prefix"]
+        loader_5  = get_loader_from_df(df_5,    cfg=cfg, save_path=f"/media/temp_eval_dataset/{prefix}_pose_5/",  src_root_prefix=src_root)
+        loader_10 = get_loader_from_df(df_5_10,  cfg=cfg, save_path=f"/media/temp_eval_dataset/{prefix}_pose_10/", src_root_prefix=src_root)
+        loader_20 = get_loader_from_df(df_10_20, cfg=cfg, save_path=f"/media/temp_eval_dataset/{prefix}_pose_20/", src_root_prefix=src_root)
+
+        ## same-pose test
+        same_pose_acc_5, best_thr, tar, far, tar_1e4 = test_image_dataloader_with_fold(loader_5, backbone)
+        print(f"|yaw| ≤ 5° vs  |yaw| ≤ 5° : Acc={same_pose_acc_5:.4f}, best_thr: {best_thr:.4f}")
+        print(f"  same-pose TAR: {tar:.4f} @FAR: {far:.4f}  |  TAR@FAR=1e-4: {tar_1e4:.4f}")
+
+        same_pose_acc_10, best_thr, tar, far, tar_1e4 = test_image_dataloader_with_fold(loader_10, backbone)
+        print(f"|yaw| 5°-10° vs  |yaw| 5°-10° : Acc={same_pose_acc_10:.4f}, best_thr: {best_thr:.4f}")
+        print(f"  same-pose TAR: {tar:.4f} @FAR: {far:.4f}  |  TAR@FAR=1e-4: {tar_1e4:.4f}")
+
+        same_pose_acc_20, best_thr, tar, far, tar_1e4 = test_image_dataloader_with_fold(loader_20, backbone)
+        print(f"|yaw| 10°-20° vs  |yaw| 10°-20° : Acc={same_pose_acc_20:.4f}, best_thr: {best_thr:.4f}")
+        print(f"  same-pose TAR: {tar:.4f} @FAR: {far:.4f}  |  TAR@FAR=1e-4: {tar_1e4:.4f}")
+
+        ## cross-pose test
+        cross_pose_5_10_res = cross_pose_test(loader_5, loader_10, backbone)
+        print(f"|yaw| ≤ 5° vs  |yaw| 5°-10° : Acc={cross_pose_5_10_res['mean_acc']:.4f}, best_thr: {cross_pose_5_10_res['mean_acc_thr']:.4f}")
+        print(f"  cross-pose TAR: {cross_pose_5_10_res['mean_tar']:.4f} @FAR: {cross_pose_5_10_res['mean_best_tar_at_mean_far']:.4f}  |  TAR@FAR=1e-4: {cross_pose_5_10_res['mean_tar_at_far_1e4']:.4f}")
     
-    df_5, df_5_10, df_10_20, df_30_90, df = split_by_yaw_ranges(args.json_path)
-    plot_yaw_distribution(df_5, df_5_10, df_10_20, df_30_90, prefix="before_equalization_")
-    df_5, df_5_10, df_10_20  = equalize_same_ids(df_5, df_5_10, df_10_20)
-    plot_yaw_distribution(df_5, df_5_10, df_10_20, df_30_90, prefix="after_equalization_")
-
-    df_5  = limit_to_n_ids(df_5,  2500)
-    df_5_10 = limit_to_n_ids(df_5_10, 2500)
-    df_10_20 = limit_to_n_ids(df_10_20, 2500)
-    # df_30_90 = limit_to_n_ids(df_30_90, 2500)
-    plot_yaw_distribution(df_5, df_5_10, df_10_20, df_30_90, prefix="limited_3K_ids_")
-    # load model
-    # backbone = load_backbone('work_dirs/checkpoints/augmentation/arcface/fullface/model_best.pt')
-    backbone = load_backbone("/media/yoav/Yoav/arcface_torch_v0/work_dirs/glint360k/no_augmentation/arcface/narrow_eyes/model_best.pt")
-
-    ## load dataloaders
-    loader_5  = get_loader_from_df(df_5, cfg=cfg,save_path="/media/temp_eval_dataset/pose_5/")
-    loader_10 = get_loader_from_df(df_5_10, cfg=cfg,save_path="/media/temp_eval_dataset/pose_10/")
-    loader_20 = get_loader_from_df(df_10_20, cfg=cfg,save_path="/media/temp_eval_dataset/pose_20/")
-    # loader_90 = get_loader_from_df(df_30_90, cfg=cfg,save_path="/media/temp_eval_dataset/pose_30/")
-
-    ## same-pose test
-    same_pose_acc_5,  best_thr, tar, far = test_image_dataloader_with_fold(loader_5, backbone)
-    print(f"|yaw| ≤ 5° vs  |yaw| ≤ 5° : {same_pose_acc_5:.4f}, best_thr: {best_thr:.4f}")
-    print(f' same-pose TAR:: {tar:.4f} @FAR: {far:.4f}')
-    same_pose_acc_10, best_thr, tar, far = test_image_dataloader_with_fold(loader_10, backbone)
-    print(f"|yaw| ≤ 10° vs  |yaw| ≤ 10° : {same_pose_acc_10:.4f}, best_thr: {best_thr:.4f}")
-    print(f' same-pose TAR:: {tar:.4f} @FAR: {far:.4f}')
-    same_pose_acc_20, best_thr, tar, far = test_image_dataloader_with_fold(loader_20, backbone)
-    print(f"|yaw| ≤ 20° vs  |yaw| ≤ 20° : {same_pose_acc_20:.4f}, best_thr: {best_thr:.4f}")
-    print(f' same-pose TAR:: {tar:.4f} @FAR: {far:.4f}')
-    ## cross-pose test
-    cross_pose_5_10_res =  cross_pose_test(loader_5, loader_10, backbone) # TODO add FT
-    print(f"|yaw| ≤ 5° vs  |yaw| ≤ 10° : {cross_pose_5_10_res['mean_acc']:.4f}, best_thr: {cross_pose_5_10_res['mean_acc_thr']:.4f}")
-    print(f'cross-pose TAR:: {cross_pose_5_10_res["mean_tar"]:.4f} @FAR: {cross_pose_5_10_res["mean_best_tar_at_mean_far"]:.4f}')
-    print(f'cross-pose FAR:: {cross_pose_5_10_res["mean_far"]:.4f} @TAR: {cross_pose_5_10_res["mean_best_far_at_mean_tar"]:.4f}')
-    print('############')
-    cross_pose_5_20_res =  cross_pose_test(loader_5, loader_20, backbone)
-    print(f"|yaw| ≤ 5° vs  |yaw| ≤ 20° : {cross_pose_5_20_res['mean_acc']:.4f}, best_thr: {cross_pose_5_20_res['mean_acc_thr']:.4f}")
-    print(f'cross-pose TAR:: {cross_pose_5_20_res["mean_tar"]:.4f} @FAR: {cross_pose_5_20_res["mean_best_tar_at_mean_far"]:.4f}')
-    print(f'cross-pose FAR:: {cross_pose_5_20_res["mean_far"]:.4f} @TAR: {cross_pose_5_20_res["mean_best_far_at_mean_tar"]:.4f}')
-    print('############')
-
-
-
-    ## Sanity check: cross-pose for same pose
-    test_pose_res_20 =  cross_pose_test(loader_20, loader_20, backbone)
-    print(f"|yaw| ≤ 20° vs  |yaw| ≤ 20° (cross-pose sanity check) : {test_pose_res_20['mean_acc']:.4f}, best_thr: {test_pose_res_20['mean_acc_thr']:.4f}")
-    test_pose_acc_20,  best_thr =  test_image_dataloader_with_fold(loader_20, backbone)
-    print(f"|yaw| ≤ 20° vs  |yaw| ≤ 20° (same-pose sanity check) : {test_pose_acc_20:.4f}, best_thr: {best_thr:.4f}")
+        cross_pose_5_20_res = cross_pose_test(loader_5, loader_20, backbone)
+        print(f"|yaw| ≤ 5° vs  |yaw| 10°-20° : Acc={cross_pose_5_20_res['mean_acc']:.4f}, best_thr: {cross_pose_5_20_res['mean_acc_thr']:.4f}")
+        print(f"  cross-pose TAR: {cross_pose_5_20_res['mean_tar']:.4f} @FAR: {cross_pose_5_20_res['mean_best_tar_at_mean_far']:.4f}  |  TAR@FAR=1e-4: {cross_pose_5_20_res['mean_tar_at_far_1e4']:.4f}")
+        print('############')

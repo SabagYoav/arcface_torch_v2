@@ -484,27 +484,31 @@ def test_fold(embeddings, labels):
     w_pos = 1.0
     w_neg = len(pos) / len(neg)
 
-    # thresholds = torch.linspace(0.2, 0.9, 50)
-    #thresholds = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    thresholds = [0.2]
+    thresholds = torch.linspace(-0.2, 1.0, 600, device=device)
     best_acc, best_thr, best_tar, best_tar_far = 0.0, 0.0, 0.0, 0.0
+    tar_at_far_1e4 = 0.0
 
     for t in thresholds:
         tp = (pos > t).sum().float()
         fn = (pos <= t).sum().float()
         tn = (neg <= t).sum().float()
         fp = (neg > t).sum().float()
-        # acc = (tp + tn).float() / (len(pos) + len(neg))
         acc = (w_pos * tp + w_neg * tn) / (w_pos * (tp + fn) + w_neg * (tn + fp))
-        tar = tp/(tp + fn)
+        tar = tp/(tp + fn + 1e-8)
+        far = fp/(fp + tn + 1e-8)
 
         if acc > best_acc:
             best_acc = acc.item()
-            best_thr = t
-        if tar > best_tar:  
-            best_tar = (tp/(tp + fn)).item()
-            best_tar_far = (fp/(fp + tn)).item()
-    return best_acc, best_thr, best_tar, best_tar_far
+            best_thr = t.item()
+        if tar > best_tar:
+            best_tar = tar.item()
+            best_tar_far = far.item()
+
+        # TAR@FAR=1e-4: find highest TAR where FAR <= 1e-4
+        if far.item() <= 1e-4 and tar.item() > tar_at_far_1e4:
+            tar_at_far_1e4 = tar.item()
+
+    return best_acc, best_thr, best_tar, best_tar_far, tar_at_far_1e4
     
 
 @torch.no_grad()
@@ -512,7 +516,7 @@ def test_image_dataloader_with_fold(dataloader, backbone, max_fold_images=500, k
     backbone.eval()
     embeddings = []
     labels = []
-    accs, threshs = [], []
+    accs, threshs, tar_at_far_1e4_list = [], [], []
     fold = 0
 
     with torch.no_grad():
@@ -525,24 +529,25 @@ def test_image_dataloader_with_fold(dataloader, backbone, max_fold_images=500, k
             labels.append(lbls.cpu())
 
             if sum(e.shape[0] for e in embeddings) >= max_fold_images:
-                acc, thresh, tar, far = test_fold(embeddings, labels)
+                acc, thresh, tar, far, tar_at_far_1e4 = test_fold(embeddings, labels)
                 accs.append(acc)
                 threshs.append(thresh)
+                tar_at_far_1e4_list.append(tar_at_far_1e4)
                 embeddings, labels = [], []
                 fold += 1
         
         if len(accs) == 0 and len(embeddings) > 0:
-            acc, thresh, tar, far = test_fold(embeddings, labels)
+            acc, thresh, tar, far, tar_at_far_1e4 = test_fold(embeddings, labels)
             accs.append(acc)
             threshs.append(thresh)
+            tar_at_far_1e4_list.append(tar_at_far_1e4)
 
     mean_acc = np.mean(accs)
     best_acc = np.max(accs)
     best_thr = threshs[ accs.index(best_acc) ]  
+    mean_tar_at_far_1e4 = np.mean(tar_at_far_1e4_list)
 
-    #print(f"[DEBUG] Best thr={best_thr:.3f}, acc={best_acc:.4f}")
-    
-    return mean_acc, best_thr, tar, far
+    return mean_acc, best_thr, tar, far, mean_tar_at_far_1e4
 
 def dumpR(data_set,
           backbone,

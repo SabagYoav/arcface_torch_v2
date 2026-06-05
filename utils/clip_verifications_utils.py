@@ -121,6 +121,46 @@ class ClipVerification(object):
         return  torch.cat(ff_embeddings),torch.cat(pf_embeddings), torch.cat(labels)
 
     # --------------------------------------------------
+    # Folded evaluation
+    # --------------------------------------------------
+    FOLD_SIZE = 1000
+
+    def _eval_folded(self, Eg, Eq, Lq, thresholds, train_val_tag):
+        """If len > FOLD_SIZE, split into folds and average metrics.
+        Rank-1 is always computed against the full gallery (not folded)."""
+        N = Eq.shape[0]
+
+        # Rank-1 against the full gallery (all queries vs all gallery)
+        r1 = self.rank1_accuracy(Eq, Lq, Eg, Lq)
+
+        if N <= self.FOLD_SIZE:
+            stats = self.tar_far_acc(Eq, Lq, Eg, Lq, thresholds, train_val_tag)
+            return stats, r1
+
+        n_folds = (N + self.FOLD_SIZE - 1) // self.FOLD_SIZE
+        all_best_acc = []
+        all_best_thr = []
+
+        for f in range(n_folds):
+            s = f * self.FOLD_SIZE
+            e = min(s + self.FOLD_SIZE, N)
+            Eq_f, Eg_f, L_f = Eq[s:e], Eg[s:e], Lq[s:e]
+
+            tag = train_val_tag if f == 0 else "train"  # histogram only for first fold
+            fold_stats = self.tar_far_acc(Eq_f, L_f, Eg_f, L_f, thresholds, tag)
+
+            all_best_acc.append(fold_stats["best_acc"])
+            all_best_thr.append(fold_stats["best_threshold"])
+            logging.info(f"  Fold {f+1}/{n_folds} (n={e-s}): "
+                         f"BestAcc={fold_stats['best_acc']:.4f}  Rank1={r1:.4f}")
+
+        avg_stats = {
+            "best_acc": float(np.mean(all_best_acc)),
+            "best_threshold": float(np.median(all_best_thr)),
+        }
+        return avg_stats, r1
+
+    # --------------------------------------------------
     # Metrics
     # --------------------------------------------------
     def tar_far_acc(self, Eq, Lq, Eg, Lg, thresholds, train_val_tag):
@@ -225,18 +265,14 @@ class ClipVerification(object):
         ## val set evaluation ##
         #extruct embeddings
         Eg, Eq, Lq = self.extract_embeddings_from_clip_dataloader(self.val_loader,backbone_full, backbone_partial, max_embeddings)
-        Lg=Lq
-        #verification metrics computation
-        val_stats = self.tar_far_acc(Eq, Lq, Eg, Lg, thresholds, train_val_tag='val')
-        val_rank1 = self.rank1_accuracy(Eq, Lq, Eg, Lg)
+        #verification metrics computation (folded if > FOLD_SIZE)
+        val_stats, val_rank1 = self._eval_folded(Eg, Eq, Lq, thresholds, train_val_tag='val')
 
         ## train set evaluation ##
         #extruct embeddings
         Eg, Eq, Lq = self.extract_embeddings_from_clip_dataloader(self.train_loader,backbone_full, backbone_partial, max_embeddings)
-        Lg=Lq
-        #verification metrics computation
-        train_stats = self.tar_far_acc(Eq, Lq, Eg, Lg, thresholds, train_val_tag='train')
-        train_rank1 = self.rank1_accuracy(Eq, Lq, Eg, Lg)
+        #verification metrics computation (folded if > FOLD_SIZE)
+        train_stats, train_rank1 = self._eval_folded(Eg, Eq, Lq, thresholds, train_val_tag='train')
 
         #log and summary write results
         logging.info(

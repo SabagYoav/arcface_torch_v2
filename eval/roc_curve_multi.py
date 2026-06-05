@@ -17,8 +17,8 @@ from tqdm import tqdm
 # =========================
 RATIOS = [15, 20, 25, 30, 40, 60, 100]
 FULL_DIR = "/datasets/glint360k/ROIs/ratio_100/test"
-OUT_ROC_IMG = "work_dirs/roc_partial_vs_full_multi.png"
-LOG_FILE = "work_dirs/roc_multi_progress.json"
+OUT_ROC_IMG = "work_dirs/roc_partial_vs_full_multi_benchmark.png"
+LOG_FILE = "work_dirs/roc_multi_progress_benchmark.json"
 
 BATCH_SIZE = 128
 NUM_WORKERS = 4
@@ -97,6 +97,81 @@ def extract_embeddings(model, root_dir):
 
 
 # =========================
+# Compute ROC from embeddings
+# =========================
+def compute_roc(query_embs, query_labels, gallery_embs, gallery_labels,
+                balanced=False, chunk_size=512, max_roc_points=10000, seed=42):
+    """
+    Compute ROC curve and AUC.
+
+    balanced=False: all NxM pairs (imbalanced).
+    balanced=True:  for each query, sample 1 positive and 1 negative gallery match (balanced).
+    """
+    q_embs = query_embs.numpy() if isinstance(query_embs, torch.Tensor) else query_embs
+    q_labels = query_labels.numpy() if isinstance(query_labels, torch.Tensor) else query_labels
+    g_embs = gallery_embs.numpy() if isinstance(gallery_embs, torch.Tensor) else gallery_embs
+    g_labels = gallery_labels.numpy() if isinstance(gallery_labels, torch.Tensor) else gallery_labels
+
+    print(f"Computing roc with balanced={balanced} ...")
+    if balanced:
+        rng = np.random.RandomState(seed)
+        # build label -> gallery indices map
+        label_to_idx = {}
+        for i, lbl in enumerate(g_labels):
+            label_to_idx.setdefault(int(lbl), []).append(i)
+        all_gallery_labels = set(label_to_idx.keys())
+
+        scores = []
+        labels = []
+        for i in range(len(q_embs)):
+            qlbl = int(q_labels[i])
+            pos_indices = label_to_idx.get(qlbl, [])
+            neg_labels = list(all_gallery_labels - {qlbl})
+            if len(pos_indices) == 0 or len(neg_labels) == 0:
+                raise ValueError(f"Query label {qlbl} has no positive or negative matches in gallery.")
+            # sample 1 positive
+            pos_idx = rng.choice(pos_indices)
+            # sample 1 negative
+            neg_lbl = rng.choice(neg_labels)
+            neg_idx = rng.choice(label_to_idx[neg_lbl])
+            # cosine similarity (embeddings already L2-normalized)
+            scores.append(q_embs[i] @ g_embs[pos_idx])
+            labels.append(1)
+            scores.append(q_embs[i] @ g_embs[neg_idx])
+            labels.append(0)
+
+        scores = np.array(scores, dtype=np.float32)
+        labels = np.array(labels, dtype=np.int8)
+    else:
+        all_scores = []
+        all_labels = []
+        for i in range(0, len(q_embs), chunk_size):
+            chunk_embs = q_embs[i:i+chunk_size]
+            chunk_labels = q_labels[i:i+chunk_size]
+            chunk_scores = (chunk_embs @ g_embs.T).reshape(-1)
+            chunk_match = (chunk_labels[:, None] == g_labels[None, :]).reshape(-1).astype(np.int8)
+            all_scores.append(chunk_scores)
+            all_labels.append(chunk_match)
+        scores = np.concatenate(all_scores)
+        del all_scores
+        labels = np.concatenate(all_labels)
+        del all_labels
+
+    gc.collect()
+    fpr, tpr, _ = roc_curve(labels, scores)
+    roc_auc = auc(fpr, tpr)
+    del scores, labels
+    gc.collect()
+
+    if len(fpr) > max_roc_points:
+        idx = np.linspace(0, len(fpr) - 1, max_roc_points, dtype=int)
+        fpr = fpr[idx]
+        tpr = tpr[idx]
+
+    return fpr, tpr, roc_auc
+
+
+# =========================
 # Main
 # =========================
 def main():
@@ -140,45 +215,11 @@ def main():
         del partial_face_model
         torch.cuda.empty_cache()
 
-        # convert to numpy once
-        partial_embs_np = partial_embs.numpy()
-        partial_labels_np = partial_labels.numpy()
-        full_embs_np = full_embs.numpy()
-        full_labels_np = full_labels.numpy()
+        fpr, tpr, roc_auc = compute_roc(
+            partial_embs, partial_labels, full_embs, full_labels
+        )
         del partial_embs, partial_labels
-
-        # compute scores and labels in chunks to avoid N×N matrix in memory
-        CHUNK = 512
-        all_scores = []
-        all_labels_list = []
-        for i in range(0, len(partial_embs_np), CHUNK):
-            chunk_embs = partial_embs_np[i:i+CHUNK]
-            chunk_labels = partial_labels_np[i:i+CHUNK]
-            chunk_scores = (chunk_embs @ full_embs_np.T).reshape(-1)
-            chunk_match = (chunk_labels[:, None] == full_labels_np[None, :]).reshape(-1).astype(np.int8)
-            all_scores.append(chunk_scores)
-            all_labels_list.append(chunk_match)
-
-        del partial_embs_np, partial_labels_np, full_embs_np, full_labels_np
-        scores = np.concatenate(all_scores)
-        del all_scores
-        labels = np.concatenate(all_labels_list)
-        del all_labels_list
         gc.collect()
-
-        fpr, tpr, _ = roc_curve(labels, scores)
-        roc_auc = auc(fpr, tpr)
-
-        # free large arrays
-        del scores, labels
-        gc.collect()
-
-        # Subsample ROC curve to keep file size manageable
-        MAX_ROC_POINTS = 10000
-        if len(fpr) > MAX_ROC_POINTS:
-            idx = np.linspace(0, len(fpr) - 1, MAX_ROC_POINTS, dtype=int)
-            fpr = fpr[idx]
-            tpr = tpr[idx]
 
         print(f"Ratio {ratio}% — AUC = {roc_auc:.6f}")
 

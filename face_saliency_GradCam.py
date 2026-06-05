@@ -1,3 +1,6 @@
+import os
+import random
+
 import cv2
 import numpy as np
 from pathlib import Path
@@ -209,7 +212,7 @@ class DualEncoderPairGradCAM:
         """
         CAM for full-face image, with partial embedding frozen as reference.
         """
-        fullface_x = fullface_x.to(self.device)
+        fullface_x = fullface_x.to(self.device)#.requires_grad_(True)
         partialface_x = partialface_x.to(self.device)
 
         with torch.no_grad():
@@ -233,7 +236,7 @@ class DualEncoderPairGradCAM:
         CAM for partial-face image, with full embedding frozen as reference.
         """
         fullface_x = fullface_x.to(self.device)
-        partialface_x = partialface_x.to(self.device)
+        partialface_x = partialface_x.to(self.device)#.requires_grad_(True)
 
         with torch.no_grad():
             full_ref = F.normalize(self.full_cam.model(fullface_x), dim=1)
@@ -277,15 +280,15 @@ def run_dual_encoder_pair_gradcam(
     )
 
     ## Find the last conv layer in each model for Grad-CAM
-    # full_layer_name, full_target_layer = find_last_conv_layer(fullface_model)
-    partial_layer_name, partial_target_layer = find_last_conv_layer(partialface_model)
+    full_layer_name, full_target_layer = find_last_conv_layer(fullface_model)
     partial_layer_name, partial_target_layer = find_last_conv_layer(partialface_model)
 
-    full_named = dict(fullface_model.named_modules())
-    # partial_named = dict(partialface_model.named_modules())
-    
-    full_target_layer = full_named["layer3.0.conv2"]      # try several options here
+    # full_named = dict(fullface_model.named_modules())
+    # full_target_layer = full_named["layer3.0.conv2"]      # try several options here
     # partial_target_layer = partial_named["layer4.2.conv3"] 
+    
+    print(f"Full-face model: using layer '{full_layer_name}' for Grad-CAM")
+    print(f"Partial-face model: using layer '{partial_layer_name}' for Grad-CAM")
 
 
     pre = FacePreprocessor(
@@ -335,6 +338,7 @@ def run_dual_encoder_pair_gradcam(
 
     concat = np.concatenate([overlay_full, overlay_part], axis=1)
     save_rgb(out_dir / "pair_gradcam.jpg", concat)
+    save_rgb(Path("/DATA/outputs/gradcam") / f"pair_gradcam_{img_name}.jpg", concat)
 
     # true forward score with both models
     with torch.no_grad():
@@ -351,18 +355,52 @@ def run_dual_encoder_pair_gradcam(
 # ============================================================
 # main
 # ============================================================
-
+import time
 if __name__ == "__main__":
-    run_dual_encoder_pair_gradcam(
-        fullface_ckpt_path="work_dirs/exp_glint360k_roi_100_r50_arcface/best_model.pt",
-        partialface_ckpt_path="work_dirs/clip_ratio_20/best_model.pt",
-        fullface_img_path="/datasets/glint360k/ROIs/ratio_100/test/42/3010.jpg",
-        partialface_img_path="/datasets/glint360k/ROIs/ratio_20/test/84/5153.jpg",
-        out_dir="outputs/dual_encoder_pair_gradcam",
-        network_full="r50",
-        network_partial="vit_s_dp005_mask_0",
-        device="cuda",
-        image_size=(112, 112),
-        mean=(0.5, 0.5, 0.5),
-        std=(0.5, 0.5, 0.5),
-    )
+    ## different ID ##
+    # run_dual_encoder_pair_gradcam(
+    #     fullface_ckpt_path="work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt",
+    #     partialface_ckpt_path="work_dirs/clip_ratio_20/best_model.pt",
+    #     fullface_img_path="/datasets/glint360k/ROIs/ratio_100/test/42/3010.jpg",
+    #     partialface_img_path="/datasets/glint360k/ROIs/ratio_20/test/84/5153.jpg",
+    #     out_dir="outputs/dual_encoder_diff_id_gradcam",
+    #     network_full="r50",
+    #     network_partial="vit_s_dp005_mask_0",
+    #     device="cuda",
+    #     image_size=(112, 112),
+    #     mean=(0.5, 0.5, 0.5),
+    #     std=(0.5, 0.5, 0.5),
+    # )
+    ## same ID ##
+    # for img_name in os.listdir("/datasets/glint360k/ROIs/ratio_100/test/42"):
+    #     print(f"Processing image: {img_name}")
+    #     time.sleep(0.25)
+    for img_name in os.listdir("/datasets/glint360k/ROIs/ratio_100/test/42"):
+        parial_img_name = random.choice(os.listdir("/datasets/glint360k/ROIs/ratio_100/test/98"))
+        # run_dual_encoder_pair_gradcam(
+        #     fullface_ckpt_path="work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt",
+        #     partialface_ckpt_path="work_dirs/clip_ratio_20/best_model.pt",
+        #     fullface_img_path=f"/datasets/glint360k/ROIs/ratio_100/test/42/{img_name}",
+        #     partialface_img_path=f"/datasets/glint360k/ROIs/ratio_20/test/42/{parial_img_name}",
+        #     out_dir=f"outputs/dual_encoder_same_id_gradcam",
+        #     network_full="r50",
+        #     network_partial="vit_s_dp005_mask_0",
+        #     device="cuda",
+        #     image_size=(112, 112),
+        #     mean=(0.5, 0.5, 0.5),
+        #     std=(0.5, 0.5, 0.5),
+        # )
+            ## different ID ##
+        run_dual_encoder_pair_gradcam(
+            fullface_ckpt_path="work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt",
+            partialface_ckpt_path="work_dirs/clip_ratio_20/best_model.pt",
+            fullface_img_path=f"/datasets/glint360k/ROIs/ratio_100/test/42/{img_name}",
+            partialface_img_path=f"/datasets/glint360k/ROIs/ratio_20/test/98/{parial_img_name}",
+            out_dir="outputs/dual_encoder_diff_id_gradcam",
+            network_full="r50",
+            network_partial="vit_s_dp005_mask_0",
+            device="cuda",
+            image_size=(112, 112),
+            mean=(0.5, 0.5, 0.5),
+            std=(0.5, 0.5, 0.5),
+        )

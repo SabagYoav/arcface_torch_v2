@@ -46,10 +46,10 @@ class CallBackVerification(object):
         for i in range(len(self.ver_list)):
             tag = os.path.basename(self.ver_name_list[i])
             ## verification accuracy test
-            acc, thresh, tar,far = verification.test_image_dataloader_with_fold(
+            acc, thresh, tar, far, tar_at_far_1e4 = verification.test_image_dataloader_with_fold(
                 self.ver_list[i], backbone)
             logging.info('[%s][%d]' % (self.ver_name_list[i], global_step))
-            logging.info('[%s][%d]Accuracy-Flip: %1.5f, Threshold: %1.3f' % (self.ver_name_list[i], global_step, acc, thresh))
+            logging.info('[%s][%d]Accuracy-Flip: %1.5f, Threshold: %1.3f, TAR@FAR=1e-4: %1.5f' % (self.ver_name_list[i], global_step, acc, thresh, tar_at_far_1e4))
 
             ## write to tensorboard - per dataset
             self.summary_writer: SummaryWriter
