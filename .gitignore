@@ -166,6 +166,8 @@ mkdocs.yml
 
 # Training outputs
 work_dirs/
+outputs/
+logs/
 
 # Large data files
 *.json
