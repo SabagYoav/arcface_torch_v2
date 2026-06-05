@@ -39,7 +39,7 @@
 	"mounts": [
 		// "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind,consistency=cached",
 		"source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
-		"source=/home/${localEnv:USER}/.ssh,target=/home/ros/.ssh,type=bind,consistency=cached",
+		"source=/home/${localEnv:USER}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DATA,target=/DATA,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DEV,target=/DEV,type=bind,consistency=cached",
 		"source=/media/${localEnv:USER}/Yoav/datasets,target=/datasets,type=bind,consistency=cached",

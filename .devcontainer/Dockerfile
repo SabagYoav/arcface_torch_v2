@@ -42,3 +42,13 @@ RUN apt-get update && apt-get install -y sudo \
 RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 
 
+#### INSTALL GIT & SSH CONFIG #####
+RUN apt-get update && apt-get install -y git openssh-client \
+  && mkdir -p /home/$USERNAME/.ssh \
+  && chmod 700 /home/$USERNAME/.ssh \
+  && echo "Host github.com" >> /etc/ssh/ssh_config \
+  && echo "  AddKeysToAgent yes" >> /etc/ssh/ssh_config \
+  && echo "  IdentityFile ~/.ssh/id_ed25519" >> /etc/ssh/ssh_config \
+  && echo "  User git" >> /etc/ssh/ssh_config
+
+
