@@ -168,13 +168,32 @@ def get_clip_dataloader(
     dali_aug = False,
     seed = 2048,
     num_workers = 0,
+    train = True,
     ) -> Iterable:
+    # train=True  -> augmented, shuffled, drop_last, GPU-prefetching DataLoaderX (training).
+    # train=False -> deterministic eval: no augmentation, no shuffle, keep every sample,
+    #                and a plain DataLoader (no background-CUDA-thread prefetch). The eval
+    #                code moves batches to GPU itself, so a plain CPU loader is correct here.
+    dataset = ClipDataset(
+        root_pf=root_pf, root_ff=root_ff,
+        transform=get_transform(augmentations=train),
+    )
 
-    train_set = ClipDataset(root_pf=root_pf, root_ff=root_ff, transform=get_transform(augmentations=True))
+    if not train:
+        # Deterministic, full-coverage evaluation loader.
+        return DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=False,
+            drop_last=False,
+            collate_fn=clip_paired_collate,
+        )
 
     rank, world_size = get_dist_info()
     train_sampler = DistributedSampler(
-        train_set, num_replicas=world_size, rank=rank, shuffle=True, seed=seed)
+        dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=seed)
 
     if seed is None:
         init_fn = None
@@ -183,7 +202,7 @@ def get_clip_dataloader(
 
     train_loader = DataLoaderX(
         local_rank=local_rank,
-        dataset=train_set,
+        dataset=dataset,
         batch_size=batch_size,
         sampler=train_sampler,
         num_workers=num_workers,

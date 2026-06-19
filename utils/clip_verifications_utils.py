@@ -44,37 +44,15 @@ class ClipVerification(object):
         self.train_loader = self.load_clip_dataloader(
             root_ff = train_targets[1], root_pf = train_targets[0], image_size=image_size, batch_size= batch_size
         )
-        # self.val_full_loader = self.load_image_folder(
-        #     val_targets[1], image_size, batch_size, num_workers
-        # )
-        # self.train_partial_loader = self.load_image_folder(
-        #     train_targets[0], image_size, batch_size, num_workers
-        # )
-        # self.train_full_loader = self.load_image_folder(
-        #     train_targets[1], image_size, batch_size, num_workers
-        # )
 
-    # --------------------------------------------------
-    # Dataset
-    # --------------------------------------------------
-    # def load_image_folder(self, path, image_size, batch_size, num_workers):
-        # dataset = ImageFolder(
-        #     path,
-        #     transform=transforms.Compose([
-        #         transforms.Resize(image_size),
-        #         transforms.ToTensor(),
-        #         transforms.Normalize([0.5]*3, [0.5]*3),
-        #     ])
-        # )
-        # return DataLoader(
-        #     dataset,
-        #     batch_size=batch_size,
-        #     shuffle=False,
-        #     num_workers=num_workers,
-        #     drop_last=False,
-        # )
     def load_clip_dataloader(self, root_ff, root_pf, image_size, batch_size):
-        return get_clip_dataloader(root_ff = root_ff, root_pf = root_pf, local_rank = 0, batch_size= batch_size)
+        # train=False -> deterministic, non-augmented, plain DataLoader (no background CUDA
+        # prefetch thread). Fixes the verification-time CUDA launch failure and makes the
+        # evaluation set fixed across epochs and across ROI ratios.
+        return get_clip_dataloader(
+            root_ff=root_ff, root_pf=root_pf, local_rank=0,
+            batch_size=batch_size, num_workers=0, train=False,
+        )
 
 
     # --------------------------------------------------
@@ -83,16 +61,27 @@ class ClipVerification(object):
     @torch.no_grad()
     def extract_embeddings(self, loader, backbone, max_embeddings):
         embeddings, labels = [], []
+        collected = 0
+        limit = int(max_embeddings)
 
         backbone.eval()
-        for i, (imgs, lbls) in enumerate(tqdm(loader, total=len(loader), desc="Extracting embeddings")):
-            # imgs = imgs.cuda()
+        for imgs, lbls in tqdm(loader, total=len(loader), desc="Extracting embeddings"):
+            remaining = limit - collected
+            if remaining <= 0:
+                break
+
             emb = backbone(imgs.cuda())
             emb = F.normalize(emb)
-            embeddings.append(emb.cpu())
-            labels.append(lbls)
-            if i >= max_embeddings // loader.batch_size:
-                break
+            emb_cpu = emb.cpu()
+            lbls_cpu = lbls.cpu() if torch.is_tensor(lbls) else torch.as_tensor(lbls)
+
+            if emb_cpu.shape[0] > remaining:
+                emb_cpu = emb_cpu[:remaining]
+                lbls_cpu = lbls_cpu[:remaining]
+
+            embeddings.append(emb_cpu)
+            labels.append(lbls_cpu)
+            collected += emb_cpu.shape[0]
 
         return torch.cat(embeddings), torch.cat(labels)
     
@@ -100,23 +89,34 @@ class ClipVerification(object):
     @torch.no_grad()
     def extract_embeddings_from_clip_dataloader(self, loader, backbone_full, backbone_partial, max_embeddings):
         pf_embeddings, ff_embeddings, labels = [], [], []
+        collected = 0
+        limit = int(max_embeddings)
 
         backbone_full.eval()
         backbone_partial.eval()
-        for i, (ff_imgs, pf_imgs, lbls) in enumerate(tqdm(loader, total=len(loader), desc="Extracting embeddings")):
-            # imgs = imgs.cuda()
+        for ff_imgs, pf_imgs, lbls in tqdm(loader, total=len(loader), desc="Extracting embeddings"):
+            remaining = limit - collected
+            if remaining <= 0:
+                break
+
             pf_emb = backbone_partial(pf_imgs.cuda())
             pf_emb = F.normalize(pf_emb)
-            pf_embeddings.append(pf_emb.cpu())
+            pf_emb_cpu = pf_emb.cpu()
 
             ff_embs = backbone_full(ff_imgs.cuda())
             ff_embs = F.normalize(ff_embs)
-            ff_embeddings.append(ff_embs.cpu())
+            ff_embs_cpu = ff_embs.cpu()
+            lbls_cpu = lbls.cpu() if torch.is_tensor(lbls) else torch.as_tensor(lbls)
 
-            
-            labels.append(lbls.cpu())
-            if i >= max_embeddings // loader.batch_size:
-                break
+            if ff_embs_cpu.shape[0] > remaining:
+                ff_embs_cpu = ff_embs_cpu[:remaining]
+                pf_emb_cpu = pf_emb_cpu[:remaining]
+                lbls_cpu = lbls_cpu[:remaining]
+
+            pf_embeddings.append(pf_emb_cpu)
+            ff_embeddings.append(ff_embs_cpu)
+            labels.append(lbls_cpu)
+            collected += ff_embs_cpu.shape[0]
 
         return  torch.cat(ff_embeddings),torch.cat(pf_embeddings), torch.cat(labels)
 
@@ -144,6 +144,15 @@ class ClipVerification(object):
         for f in range(n_folds):
             s = f * self.FOLD_SIZE
             e = min(s + self.FOLD_SIZE, N)
+            fold_n = e - s
+
+            if fold_n < self.FOLD_SIZE:
+                logging.info(
+                    f"  Fold {f+1}/{n_folds} (n={fold_n}): "
+                    f"Skipped (smaller than FOLD_SIZE={self.FOLD_SIZE})"
+                )
+                continue
+
             Eq_f, Eg_f, L_f = Eq[s:e], Eg[s:e], Lq[s:e]
 
             tag = train_val_tag if f == 0 else "train"  # histogram only for first fold
@@ -153,6 +162,16 @@ class ClipVerification(object):
             all_best_thr.append(fold_stats["best_threshold"])
             logging.info(f"  Fold {f+1}/{n_folds} (n={e-s}): "
                          f"BestAcc={fold_stats['best_acc']:.4f}  Rank1={r1:.4f}")
+
+        if len(all_best_acc) == 0:
+            logging.warning(
+                "No folds were evaluated because all folds were smaller than FOLD_SIZE. "
+                "Returning NaN verification stats."
+            )
+            return {
+                "best_acc": float("nan"),
+                "best_threshold": float("nan"),
+            }, r1
 
         avg_stats = {
             "best_acc": float(np.mean(all_best_acc)),
@@ -256,7 +275,7 @@ class ClipVerification(object):
 
 
     @torch.no_grad()
-    def __call__(self, backbone_partial, backbone_full, global_step, epoch, max_embeddings=1000):
+    def __call__(self, backbone_partial, backbone_full, global_step, epoch, max_embeddings=10000):
         self.current_epoch = epoch
         backbone_partial.eval()
         backbone_full.eval()

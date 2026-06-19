@@ -110,7 +110,10 @@ def main(args):
     if cfg.optimizer == "sgd":
         # TODO the params of partial fc must be last in the params list
         opt = torch.optim.SGD(
-            params=[{"params": backbone.parameters()}],
+            params=[{"pa"
+            ""
+            ""
+            "rams": backbone.parameters()}],
             lr=cfg.lr, momentum=0.9, weight_decay=cfg.weight_decay)
 
     elif cfg.optimizer == "adamw":
@@ -257,6 +260,6 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
     parser = argparse.ArgumentParser(
         description="Distributed Arcface Training in Pytorch")
-    parser.add_argument("--config",default="configs/exp_glint360k_vit_l_clip.py", type=str, help="py config file")
+    parser.add_argument("--config",default="configs/exp_glint360k_r50_clip.py", type=str, help="py config file")
     results_dict = main(parser.parse_args())
     print(f"Best Acc: {results_dict['best_acc']:.5f}")

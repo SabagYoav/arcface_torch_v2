@@ -32,6 +32,10 @@ def init_logging(rank, models_root):
         log_root = logging.getLogger()
         log_root.setLevel(logging.INFO)
         formatter = logging.Formatter("Training: %(asctime)s-%(message)s")
+
+        # Remove previous handlers to avoid duplicates when called multiple times
+        log_root.handlers.clear()
+
         handler_file = logging.FileHandler(os.path.join(models_root, "training.log"))
         handler_stream = logging.StreamHandler(sys.stdout)
         handler_file.setFormatter(formatter)

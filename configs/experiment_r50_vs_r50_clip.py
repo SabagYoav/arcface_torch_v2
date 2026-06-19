@@ -1,22 +1,22 @@
 import os
 from easydict import EasyDict as edict
 
-# R50 student + R50 teacher CLIP distillation, ROI sweep.
-# Used as the base config by training_multi_loops.py; the orchestrator overrides
+# Experiment: R50 student vs R50 teacher CLIP distillation across ROI ratios.
+# Base config consumed by training_multi_loops.py; the orchestrator overrides
 # root_ff / root_pf / val_targets / train_targets / output / num_classes / num_image
 # per ROI ratio.
 
 config = edict()
 config.margin_list = (1.0, 0.0, 0.4)
-config.network = "r50"
-config.resume = False
-config.save_all_states = False          # skip the ~1GB optimizer checkpoint per ratio
+config.network = "r50"                   # student
+config.resume = False                      # resume from checkpoint_gpu_0.pt in the ratio's output dir if present
+config.save_all_states = False             # save per-epoch checkpoint (backbone+opt+sched) so a ratio can resume
 config.output = None
 config.embedding_size = 512
 config.sample_rate = 3.0
 config.fp16 = True
 config.weight_decay = 0.1
-config.batch_size = 64
+config.batch_size = 64                    # keep student+teacher R50 under ~0.5 of a 12GB GPU
 config.lr = 0.001
 config.verbose = 2000
 config.frequent = 50
@@ -33,11 +33,11 @@ config.root_pf = f"{pf_dir}/train"
 config.val_targets = [f"{ff_dir}/val", f"{pf_dir}/val"]
 config.train_targets = [f"{ff_dir}/train", f"{pf_dir}/train"]
 
-config.num_epoch = 2
+config.num_epoch = 3
 config.warmup_epoch = 1
 config.num_workers = 4
 
-config.teacher_network = "r50"
+config.teacher_network = "r50"           # teacher
 config.teacher_model_path = "work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt"
 
 config.temperature = 0.07
