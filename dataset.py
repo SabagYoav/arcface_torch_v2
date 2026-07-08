@@ -170,13 +170,16 @@ def get_clip_dataloader(
     num_workers = 0,
     train = True,
     ) -> Iterable:
-    # train=True  -> augmented, shuffled, drop_last, GPU-prefetching DataLoaderX (training).
-    # train=False -> deterministic eval: no augmentation, no shuffle, keep every sample,
-    #                and a plain DataLoader (no background-CUDA-thread prefetch). The eval
-    #                code moves batches to GPU itself, so a plain CPU loader is correct here.
+    # train=True  -> shuffled, drop_last, GPU-prefetching DataLoaderX (training).
+    # train=False -> deterministic eval: no shuffle, keep every sample, and a plain
+    #                DataLoader (no background-CUDA-thread prefetch). The eval code
+    #                moves batches to GPU itself, so a plain CPU loader is correct here.
+    # Train-time augmentations are DISABLED (augmentations=False): the ColorJitter/
+    # GaussianBlur ran on CPU and added heat, and this is a distillation task where
+    # they weren't clearly helping. Set augmentations=train to restore them.
     dataset = ClipDataset(
         root_pf=root_pf, root_ff=root_ff,
-        transform=get_transform(augmentations=train),
+        transform=get_transform(augmentations=False),
     )
 
     if not train:

@@ -15,27 +15,31 @@ from utils.utils_config import get_config
 # -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
-FULLFACE_ROOT = Path("/media/yoav/Yoav/datasets/glint360k/fullface_subset")  # quick-run subset (symlinked IDs)
+FULLFACE_ROOT = Path("/media/yoav/Yoav/datasets/glint360k/ROIs/ratio_100")  # quick-run subset (symlinked IDs)
 CENTER_Y_JSON = Path("/media/yoav/Yoav/datasets/glint360k")
 
 # ROI_ROOT = Path("/datasets/roi_variants")
 TRAIN_SCRIPT = Path("train_v4_clip.py")
 
-# R50 student vs R50 teacher experiment
-BASE_CONFIG = "configs/experiment_r50_vs_r50_clip.py"
+# Experiment config + output namespace. Override per experiment via env vars, e.g.
+#   EXP_NAME=exp_r50_vs_r50_clip BASE_CONFIG=configs/experiment_r50_vs_r50_clip.py python training_multi_loops_claude.py
+# so each experiment writes to its own work_dirs/<EXP_NAME>/ folder (and its
+# result.json markers only block reruns of that same experiment).
+BASE_CONFIG = 'configs/experiment_r50_vs_vit_clip.py' #os.environ.get("BASE_CONFIG", "configs/experiment_r50_vs_r50_clip.py")
+EXP_NAME = os.environ.get("EXP_NAME", "exp_clip_r50_vs_vit")  # output namespace for this experiment (work_dirs/<EXP_NAME>/)
 
 ROI_RATIOS = [1.0, 0.6, 0.4, 0.3, 0.2, 0.15]
 ROI_WIDTH_RATIO = 1.0   # relative to face width
 IMG_EXTS = [".jpg", ".jpeg", ".png"]
 
-VARIANTS_DATASET_ROOT = Path("/media/yoav/Yoav/datasets/variants_dataset_subset")
+VARIANTS_DATASET_ROOT = Path("/media/yoav/Yoav/datasets/variants_dataset")
 
 MARGIN = 5
 
-ACCURACY_PLOT_PATH = "work_dirs/accuracy_comparison.png"
+ACCURACY_PLOT_PATH = os.path.join("work_dirs", EXP_NAME, "fullset_accuracy_comparison.png")
 
 TRAINING_FLAG = True
-GPU_MEM_FRACTION = 0.9   
+# GPU_MEM_FRACTION = 0.9   
 
 def setup_multi_loops_logger(log_path="training_multi_loops_log.txt"):
     logger = logging.getLogger("multi_loops_logger")
@@ -277,7 +281,8 @@ def read_fingerprint(dst_root: Path, filename: str):
 # -------------------------------------------------
 # Dedicated output namespace so this experiment can never collide with stale
 # checkpoints from other experiments (which would corrupt train_v4's resume).
-EXP_ROOT = "work_dirs/exp_clip_r50_vs_r50"
+# Derived from EXP_NAME (set at top) so the plot path and results dir always agree.
+EXP_ROOT = f"work_dirs/{EXP_NAME}"
 
 
 def ratio_output_dir(tag: str) -> Path:
@@ -356,12 +361,12 @@ def main():
         tag = f"ratio_{int(ratio * 100)}"
 
         ## resume: skip ratios that already finished (have a result.json marker)
-        # cached = load_ratio_result(tag)
-        # if cached is not None:
-        #     print(f"⏭️  {tag} already complete (resume): {cached}, skipping.")
-        #     logger.info(f"Resume: {tag} already complete: {cached}, skipping.")
-        #     ret[ratio] = cached
-        #     continue
+        cached = load_ratio_result(tag)
+        if cached is not None:
+            print(f"⏭️  {tag} already complete (resume): {cached}, skipping.")
+            logger.info(f"Resume: {tag} already complete: {cached}, skipping.")
+            ret[ratio] = cached
+            continue
 
         ## create partial face data variant
         print(f"\n📦 Creating ROI dataset: {tag}")

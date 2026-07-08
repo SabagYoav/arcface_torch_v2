@@ -172,13 +172,15 @@ def main(args):
 
     ### training loop ###
     for epoch in range(start_epoch, cfg.num_epoch):
+        if epoch >=10:
+            logging.info("Skipping epoch {}".format(epoch))
+            continue
         
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
 
         for _, (full_face_img, partial_face_img, labels )  in enumerate(train_loader):
-            # if _ >= 100:
-            #     break
+
             if _ == 0 :
                 save_image_grid(partial_face_img, f"{cfg.output}/partial_face_img_batch_grid.jpg", nrow=4)
                 save_image_grid(full_face_img, f"{cfg.output}/full_face_img_batch_grid.jpg", nrow=4)
