@@ -15,19 +15,31 @@ from utils.utils_config import get_config
 # -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
-FULLFACE_ROOT = Path("/datasets/glint360k/imageFolder_split_fullface") #TODO: update to train test val
-CENTER_Y_JSON = Path("/datasets/glint360k")
+FULLFACE_ROOT = Path("/media/yoav/Yoav/datasets/glint360k/ROIs/ratio_100")  # quick-run subset (symlinked IDs)
+CENTER_Y_JSON = Path("/media/yoav/Yoav/datasets/glint360k")
 
 # ROI_ROOT = Path("/datasets/roi_variants")
 TRAIN_SCRIPT = Path("train_v4_clip.py")
 
-ROI_RATIOS = [ 0.15] #[1.0, 0.6, 0.4, 0.3, 0.25, 0.2]
+# Experiment config + output namespace. Override per experiment via env vars, e.g.
+#   EXP_NAME=exp_r50_vs_r50_clip BASE_CONFIG=configs/experiment_r50_vs_r50_clip.py python training_multi_loops_claude.py
+# so each experiment writes to its own work_dirs/<EXP_NAME>/ folder (and its
+# result.json markers only block reruns of that same experiment).
+BASE_CONFIG = 'configs/experiment_r50_vs_vit_clip.py' #os.environ.get("BASE_CONFIG", "configs/experiment_r50_vs_r50_clip.py")
+EXP_NAME = os.environ.get("EXP_NAME", "exp_clip_r50_vs_vit")  # output namespace for this experiment (work_dirs/<EXP_NAME>/)
+
+ROI_RATIOS = [1.0, 0.6, 0.4, 0.3, 0.2, 0.15]
 ROI_WIDTH_RATIO = 1.0   # relative to face width
 IMG_EXTS = [".jpg", ".jpeg", ".png"]
 
-VARIANTS_DATASET_ROOT = Path("/datasets/variants_dataset") 
+VARIANTS_DATASET_ROOT = Path("/media/yoav/Yoav/datasets/variants_dataset")
 
 MARGIN = 5
+
+ACCURACY_PLOT_PATH = os.path.join("work_dirs", EXP_NAME, "fullset_accuracy_comparison.png")
+
+TRAINING_FLAG = True
+# GPU_MEM_FRACTION = 0.9   
 
 def setup_multi_loops_logger(log_path="training_multi_loops_log.txt"):
     logger = logging.getLogger("multi_loops_logger")
@@ -113,7 +125,7 @@ def write_split(
             canvas[y1:y2, x1:x2] = roi
 
             cv2.imwrite(str(out_id_dir / img_path.name), canvas)
-            
+
     # remove empty or too small folders
     remove_small_id_folders(dst_root, min_images=2)
 
@@ -150,12 +162,40 @@ def plot_results(results: dict, out_dir="variants_plots"):
             metric=metric,
             filename=os.path.join(out_dir, f"roi_sweep_{metric}.png"),
         )
-        
+
+
+def plot_accuracy_comparison(results: dict, filename: str = ACCURACY_PLOT_PATH):
+    """Combined plot: best verification accuracy vs ROI ratio (R50 student vs R50 teacher)."""
+    if not results:
+        print("No results to plot.")
+        return
+
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    items = sorted(results.items(), key=lambda x: x[0])              # by ratio
+    ratios = [r for r, _ in items]
+    accs = [d.get("best_acc", float("nan")) for _, d in items]
+    xs = [int(round(r * 100)) for r in ratios]
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(xs, accs, marker="o", linewidth=2)
+    for x, a in zip(xs, accs):
+        plt.annotate(f"{a:.3f}", (x, a), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+    plt.xlabel("ROI ratio (% of face height visible)")
+    plt.ylabel("Best verification accuracy (val)")
+    plt.title("R50 student vs R50 teacher — CLIP distillation accuracy vs ROI")
+    plt.grid(True, alpha=0.3)
+    plt.gca().invert_xaxis()   # full face (100) on the left, eyes-only (15) on the right
+    plt.tight_layout()
+    plt.savefig(filename, dpi=150)
+    plt.close()
+    print(f"✅ Saved accuracy comparison plot to {filename}")
+
 
 def read_and_update_variant_config(tag:str, ff_dir:Path, pf_dir:Path, exp_name_prefix = None):
     train_ff_dir, val_ff_dir = str(ff_dir / "train"), str(ff_dir / "val")
     train_pf_dir, val_pf_dir  = str(pf_dir / "train"), str(pf_dir / "val")
-    
+
 
     val_targets = [val_ff_dir, val_pf_dir ]
     train_targets = [train_ff_dir,train_pf_dir]
@@ -168,7 +208,7 @@ def read_and_update_variant_config(tag:str, ff_dir:Path, pf_dir:Path, exp_name_p
     )
     parser.add_argument(
         "--config",
-        default="configs/config_glint360k_vit_s_roi_sweep.py",
+        default=BASE_CONFIG,
         type=str,
     )
     args = parser.parse_args([])
@@ -179,7 +219,7 @@ def read_and_update_variant_config(tag:str, ff_dir:Path, pf_dir:Path, exp_name_p
     cfg.root_pf = train_pf_dir
     cfg.val_targets = val_targets
     cfg.train_targets = train_targets
-    cfg.output = f"work_dirs/{exp_name}"
+    cfg.output = str(ratio_output_dir(tag))   # work_dirs/exp_r50_vs_r50/clip_<tag>
     cfg.batch_grid_tag = exp_name
 
 
@@ -217,7 +257,7 @@ def write_variants_config(dst_root: Path, cfg: dict):
         f.write("# Auto-generated config file\n")
         f.write("from easydict import EasyDict as edict\n\n")
         f.write("config = edict()\n")
-        
+
         for key, value in cfg.items():
             f.write(f"config.{key} = {repr(value)}\n")
 
@@ -236,39 +276,97 @@ def read_fingerprint(dst_root: Path, filename: str):
         return f.read().strip()
 
 
-def write_variant_dataset(ratio):
-    ## check if dataset already exists by reading fingerprint
-    fingerprint = read_fingerprint(dst_root=VARIANTS_DATASET_ROOT, filename="fingerprint.txt")
-    if not fingerprint == f"ratio_{int(ratio * 100)}":
+# -------------------------------------------------
+# Resume helpers (per-ratio completion markers)
+# -------------------------------------------------
+# Dedicated output namespace so this experiment can never collide with stale
+# checkpoints from other experiments (which would corrupt train_v4's resume).
+# Derived from EXP_NAME (set at top) so the plot path and results dir always agree.
+EXP_ROOT = f"work_dirs/{EXP_NAME}"
 
+
+def ratio_output_dir(tag: str) -> Path:
+    return Path(EXP_ROOT) / f"clip_{tag}"
+
+
+def load_ratio_result(tag: str):
+    """Return the saved result dict for a finished ratio, or None if not complete."""
+    p = ratio_output_dir(tag) / "result.json"
+    if p.exists():
+        try:
+            return json.load(open(p))
+        except Exception:
+            return None
+    return None
+
+
+def save_ratio_result(tag: str, res: dict):
+    out = ratio_output_dir(tag)
+    out.mkdir(parents=True, exist_ok=True)
+    with open(out / "result.json", "w") as f:
+        json.dump(res, f)
+
+
+def collect_all_results():
+    """Rebuild the results dict from on-disk markers (for re-plotting after a crash)."""
+    ret = {}
+    for ratio in ROI_RATIOS:
         tag = f"ratio_{int(ratio * 100)}"
-        for split in ["train", "val", "test"]:
-            print(f"📂 Writing split: {split} with ROI ratio: {ratio}")
-            write_split(
-                src_root=FULLFACE_ROOT / split,
-                center_y_json=CENTER_Y_JSON / f"center_of_eyes_points_{split}.json" ,
-                # dst_root=ROI_ROOT / tag / split,
-                dst_root=VARIANTS_DATASET_ROOT / tag / split,
-                roi_ratio=ratio,
-                roi_w_ratio=ROI_WIDTH_RATIO
-            )
-        write_fingerprint(dst_root = Path(VARIANTS_DATASET_ROOT),filename= f"fingerprint.txt", tag=tag)
-    
+        res = load_ratio_result(tag)
+        if res is not None:
+            ret[ratio] = res
+    return ret
+
+
+def write_variant_dataset(ratio):
+    # Each ratio gets its own tag dir (VARIANTS_DATASET_ROOT/ratio_XX/{train,val,test}).
+    # Skip rebuilding if a per-tag fingerprint already marks it complete.
+    tag = f"ratio_{int(ratio * 100)}"
+    tag_root = VARIANTS_DATASET_ROOT / tag
+
+    fingerprint = read_fingerprint(dst_root=tag_root, filename="fingerprint.txt")
+    if fingerprint == tag:
+        print(f"⏭️  ROI dataset {tag} already built, skipping.")
+        return
+
+    for split in ["train", "val", "test"]:
+        print(f"📂 Writing split: {split} with ROI ratio: {ratio}")
+        write_split(
+            src_root=FULLFACE_ROOT / split,
+            center_y_json=CENTER_Y_JSON / f"center_of_eyes_points_{split}.json",
+            dst_root=tag_root / split,
+            roi_ratio=ratio,
+            roi_w_ratio=ROI_WIDTH_RATIO
+        )
+    write_fingerprint(dst_root=tag_root, filename="fingerprint.txt", tag=tag)
+
 # -------------------------------------------------
 # MAIN
 # -------------------------------------------------
-TRAINING_FLAG = True
+
+
 def main():
     ret = {}
 
+    # Cap this process to <= 0.5 of the GPU memory (hard limit; OOMs instead of exceeding).
+    # if torch.cuda.is_available():
+    #     torch.cuda.set_per_process_memory_fraction(GPU_MEM_FRACTION, 0)
+
     ## define logger
     logger = setup_multi_loops_logger()
-    logger.info("This is a log file for training multi ROIs loops experiments.\n")
     log_path = "training_multi_loops_log.txt"
 
     ## iterate over variants (ROIs)
     for ratio in ROI_RATIOS:
         tag = f"ratio_{int(ratio * 100)}"
+
+        ## resume: skip ratios that already finished (have a result.json marker)
+        cached = load_ratio_result(tag)
+        if cached is not None:
+            print(f"⏭️  {tag} already complete (resume): {cached}, skipping.")
+            logger.info(f"Resume: {tag} already complete: {cached}, skipping.")
+            ret[ratio] = cached
+            continue
 
         ## create partial face data variant
         print(f"\n📦 Creating ROI dataset: {tag}")
@@ -276,22 +374,31 @@ def main():
         write_variant_dataset(ratio)
 
         if TRAINING_FLAG == True:
-        
+
             ## read and update variant config file
             #TODO: set the variables in an env file
-            args = read_and_update_variant_config(tag, ff_dir = FULLFACE_ROOT, pf_dir = VARIANTS_DATASET_ROOT , exp_name_prefix="clip")
+            args = read_and_update_variant_config(
+                tag,
+                ff_dir=FULLFACE_ROOT,
+                pf_dir=VARIANTS_DATASET_ROOT / tag,   # read from the same tag dir we just wrote
+                exp_name_prefix="clip",
+            )
 
-            ## run training loop for the variant        
+            ## run training loop for the variant (train_v4 resumes mid-ratio from its own checkpoint)
             print(f"🎯 Training ArcFace on {tag}")
             logger.info(f"Training ArcFace on {tag}")
-            ret[ratio]= run_training( args = args )
+            ret[ratio] = run_training(args=args)
+
+            ## persist per-ratio result so a later crash won't redo this ratio
+            save_ratio_result(tag, ret[ratio])
 
             ## log results
-            print(f"✅ Completed training for {tag} with results: {ret[ratio]}")  
+            print(f"✅ Completed training for {tag} with results: {ret[ratio]}")
             logger.info(f"Completed training for {tag} with results: {ret[ratio]}")
 
-    plot_results(ret)    
-    
+    plot_results(ret)
+    plot_accuracy_comparison(ret, ACCURACY_PLOT_PATH)
+
 if __name__ == "__main__":
     main()
 
