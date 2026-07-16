@@ -7,7 +7,7 @@
 			"ROS_DISTRO": "humble",
 			"USERNAME": "${localEnv:USER}"			
 		},
-		"target": "dev"
+		"target": "base"
 		
 	},
 	"privileged": true,
