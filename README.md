@@ -198,20 +198,7 @@ All trained checkpoints (teacher + R50 / ViT-S students across ROI ratios) are a
 
 **🧠 [Checkpoints — Google Drive](https://drive.google.com/drive/folders/12NR3TcoKfjluAcgfHmrg-rIEqe5FY0oI?usp=drive_link)**
 
-Download and place them under `work_dirs/` following the paths below (the eval/training
-scripts load `best_model.pt` from these locations):
-
-| Model | Path |
-|-------|------|
-| **Teacher** (R50, full-face) | `work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt` |
-| **R50 students** (per ROI: 100/60/40/30/20/15) | `work_dirs/exp_clip_r50_vs_r50/clip_ratio_<r>/best_model.pt` |
-| **ViT-S students** (per ROI: 100/30/20/15\*) | `work_dirs/exp_clip_r50_vs_vit/clip_ratio_<r>/best_model.pt` |
-
-Each ratio directory also contains `model.pt` (last epoch), `checkpoint_gpu_0.pt` (resume state),
-`result.json` (best verification accuracy), and TensorBoard logs.
-
-\* The ViT-S `ratio_60` and `ratio_40` checkpoints are not present in `exp_clip_r50_vs_vit`; a
-complete ViT-S set exists under `work_dirs/exp_r50_vs_vit_clip_subset/`.
+Download and place them with respect to the config you are running
 
 ---
 
