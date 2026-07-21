@@ -8,8 +8,8 @@ FROM $BASE_IMAGE AS base
 ARG ROS_DISTRO
 
 # install ros packages
-RUN sudo apt-get update &&\
-    sudo apt-get install -y --no-install-recommends
+RUN apt-get update &&\
+    apt-get install -y --no-install-recommends
 
 
 ###################################################

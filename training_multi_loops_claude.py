@@ -15,8 +15,8 @@ from utils.utils_config import get_config
 # -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
-FULLFACE_ROOT = Path("/media/yoav/Yoav/datasets/glint360k/ROIs/ratio_100")  # quick-run subset (symlinked IDs)
-CENTER_Y_JSON = Path("/media/yoav/Yoav/datasets/glint360k")
+FULLFACE_ROOT = Path("/DATA/ROIs/ratio_100")  # quick-run subset (symlinked IDs)
+CENTER_Y_JSON = Path("center_json")
 
 # ROI_ROOT = Path("/datasets/roi_variants")
 TRAIN_SCRIPT = Path("train_v4_clip.py")
@@ -28,11 +28,11 @@ TRAIN_SCRIPT = Path("train_v4_clip.py")
 BASE_CONFIG = 'configs/experiment_r50_vs_vit_clip.py' #os.environ.get("BASE_CONFIG", "configs/experiment_r50_vs_r50_clip.py")
 EXP_NAME = os.environ.get("EXP_NAME", "exp_clip_r50_vs_vit")  # output namespace for this experiment (work_dirs/<EXP_NAME>/)
 
-ROI_RATIOS = [1.0, 0.6, 0.4, 0.3, 0.2, 0.15]
+ROI_RATIOS = [0.15, 0.2, 0.3, 0.4, 0.6, 1.0]
 ROI_WIDTH_RATIO = 1.0   # relative to face width
 IMG_EXTS = [".jpg", ".jpeg", ".png"]
 
-VARIANTS_DATASET_ROOT = Path("/media/yoav/Yoav/datasets/variants_dataset")
+VARIANTS_DATASET_ROOT = Path("/DATA/ROIs/variants_dataset")
 
 MARGIN = 5
 

@@ -19,7 +19,7 @@ config.embedding_size = 512
 config.sample_rate = 3.0
 config.fp16 = True
 config.weight_decay = 0.1
-config.batch_size = 64                   # fits ViT-S + R50 teacher in ~12GB; matches R50 run's CLIP negatives
+config.batch_size = 128                   # fits ViT-S + R50 teacher in ~12GB; matches R50 run's CLIP negatives
 config.lr = 0.0003                       # ViT-tuned: 1e-3 is unstable for ViT at batch 64; 3e-4 + long warmup is stable
 config.verbose = 2000
 config.frequent = 50
@@ -28,7 +28,7 @@ config.dali_aug = False
 config.optimizer = "adamw"
 
 # Default (overridden by the orchestrator). Points at the quick-run subset.
-ff_dir = "/media/yoav/Yoav/datasets/glint360k/fullface_subset"
+ff_dir = "/media/yoav/Yoav/datasets/variants_dataset_subset/ratio_100"
 pf_dir = "/media/yoav/Yoav/datasets/variants_dataset_subset/ratio_100"
 
 config.root_ff = f"{ff_dir}/train"

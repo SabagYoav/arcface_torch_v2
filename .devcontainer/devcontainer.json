@@ -3,11 +3,11 @@
 	"dockerFile": "../.devcontainer/Dockerfile",
 	"build": {
 		"args": {
-			"BASE_IMAGE": "381491853486.dkr.ecr.us-east-1.amazonaws.com/ironbrain/ros2-pytorch:humble-pytorch2.3.0",
+			"BASE_IMAGE": "nvidia/cuda:12.4.0-devel-ubuntu22.04",
 			"ROS_DISTRO": "humble",
 			"USERNAME": "${localEnv:USER}"			
 		},
-		"target": "dev"
+		"target": "base"
 		
 	},
 	"privileged": true,
@@ -38,15 +38,11 @@
 	},
 	"mounts": [
 		// "source=${localEnv:SSH_AUTH_SOCK},target=/ssh-agent,type=bind,consistency=cached",
-		"source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/.ssh,target=/home/${localEnv:USER}/.ssh,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DATA,target=/DATA,type=bind,consistency=cached",
 		"source=/home/${localEnv:USER}/DEV,target=/DEV,type=bind,consistency=cached",
-		"source=/media/${localEnv:USER}/Yoav/datasets,target=/datasets,type=bind,consistency=cached",
-		"source=/media/,target=/media,type=bind,consistency=cached",
-		"source=/mnt/,target=/mnt,type=bind,consistency=cached",
-		"source=/dev/shm,target=/dev/shm,type=bind,consistency=cached",
-		"source=/home/${localEnv:USER}/DEV/dds_profiles,target=/home/${localEnv:USER}/DEV/dds_profiles,type=bind,consistency=cached"
+		// "source=/media/${localEnv:USER}/DATA/,target=/datasets,type=bind,consistency=cached",
+		"source=/dev/shm,target=/dev/shm,type=bind,consistency=cached"
 	
 	],
 	// "postCreateCommand": ["sudo sysctl -w net.core.rmem_max=2147483647",

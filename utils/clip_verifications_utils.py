@@ -135,6 +135,7 @@ class ClipVerification(object):
 
         if N <= self.FOLD_SIZE:
             stats = self.tar_far_acc(Eq, Lq, Eg, Lq, thresholds, train_val_tag)
+            stats["std_acc"] = 0.0  # single fold, no fold-to-fold variance
             return stats, r1
 
         n_folds = (N + self.FOLD_SIZE - 1) // self.FOLD_SIZE
@@ -170,11 +171,13 @@ class ClipVerification(object):
             )
             return {
                 "best_acc": float("nan"),
+                "std_acc": float("nan"),
                 "best_threshold": float("nan"),
             }, r1
 
         avg_stats = {
             "best_acc": float(np.mean(all_best_acc)),
+            "std_acc": float(np.std(all_best_acc)),
             "best_threshold": float(np.median(all_best_thr)),
         }
         return avg_stats, r1
@@ -296,14 +299,14 @@ class ClipVerification(object):
         #log and summary write results
         logging.info(
             f"[CLIP][{global_step}] train verification test "
-            f"Train BestAcc={train_stats['best_acc']:.4f} "
+            f"Train BestAcc={train_stats['best_acc']:.4f}±{train_stats['std_acc']:.4f} "
             f"Train Rank1={train_rank1:.4f} "
             f"Train Thr={train_stats['best_threshold']:.2f}"
         )
 
         logging.info(
             f"[CLIP][{global_step}][VAL] "
-            f"Val BestAcc={val_stats['best_acc']:.4f} "
+            f"Val BestAcc={val_stats['best_acc']:.4f}±{val_stats['std_acc']:.4f} "
             f"Val Rank1={val_rank1:.4f} "
             f"Val Thr={val_stats['best_threshold']:.2f}"
         )
