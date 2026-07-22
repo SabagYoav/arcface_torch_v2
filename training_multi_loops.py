@@ -22,7 +22,7 @@ CENTER_Y_JSON = Path("center_json")
 TRAIN_SCRIPT = Path("train_v4_clip.py")
 
 # Experiment config + output namespace. Override per experiment via env vars, e.g.
-#   EXP_NAME=exp_r50_vs_r50_clip BASE_CONFIG=configs/experiment_r50_vs_r50_clip.py python training_multi_loops_claude.py
+#   EXP_NAME=exp_r50_vs_r50_clip BASE_CONFIG=configs/experiment_r50_vs_r50_clip.py python training_multi_loops.py
 # so each experiment writes to its own work_dirs/<EXP_NAME>/ folder (and its
 # result.json markers only block reruns of that same experiment).
 BASE_CONFIG = 'configs/experiment_r50_vs_vit_clip.py' #os.environ.get("BASE_CONFIG", "configs/experiment_r50_vs_r50_clip.py")

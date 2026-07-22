@@ -41,6 +41,6 @@ done
 
 log "Starting training (CUDA_VISIBLE_DEVICES=0, single GPU)."
 export CUDA_VISIBLE_DEVICES=0
-python3 training_multi_loops_claude.py 2>&1 | tee -a "$LOGFILE"
+python3 training_multi_loops.py 2>&1 | tee -a "$LOGFILE"
 status=$?
-log "training_multi_loops_claude.py exited with status $status"
+log "training_multi_loops.py exited with status $status"
