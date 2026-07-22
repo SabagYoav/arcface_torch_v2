@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 import torch
 from backbones import get_model
-from dataset import get_clip_dataloader
+from dataset import get_clip_dataloader, get_onthefly_clip_dataloader, load_eye_center_metadata
 from losses import CombinedMarginLoss
 from lr_scheduler import PolynomialLRWarmup
 from partial_fc_v2 import PartialFC_V2
@@ -82,15 +82,27 @@ def main(args):
         else None
     )
     
-    train_loader = get_clip_dataloader(
-        cfg.root_pf, cfg.root_ff,
-        local_rank,
-        cfg.batch_size,
-        cfg.dali,
-        cfg.dali_aug,
-        cfg.seed,
-        cfg.num_workers
-    )
+    if getattr(cfg, "use_onthefly_dataset", False):
+        eye_center_metadata = load_eye_center_metadata(cfg.eye_center_metadata_path)
+        train_loader = get_onthefly_clip_dataloader(
+            root_dir=cfg.root_dir,
+            metadata=eye_center_metadata,
+            ratio=cfg.roi_ratio,
+            local_rank=local_rank,
+            batch_size=cfg.batch_size,
+            seed=cfg.seed,
+            num_workers=cfg.num_workers,
+        )
+    else:
+        train_loader = get_clip_dataloader(
+            cfg.root_pf, cfg.root_ff,
+            local_rank,
+            cfg.batch_size,
+            cfg.dali,
+            cfg.dali_aug,
+            cfg.seed,
+            cfg.num_workers
+        )
 
     # ------------ load teacher model -------------
     teacher_backbone = get_model(
@@ -153,7 +165,7 @@ def main(args):
         logging.info(": " + key + " " * num_space + str(value))
 
     clip_verification = ClipVerification(
-        val_targets=cfg.val_targets, train_targets=cfg.train_targets, 
+        ratio=cfg.roi_ratio,
         summary_writer=summary_writer, wandb_logger = None, work_dir=cfg.output
     )
 
@@ -218,8 +230,8 @@ def main(args):
             global_step=global_step,
             epoch=epoch,
         )
-        logging.info("Epoch {}: Rank-1 Acc {:.5f}".format(epoch, rank1))
-        logging.info("Epoch {}: Verification Accuracies: {}".format(epoch, ver_accs))
+        logging.info("Epoch {}: LFW cross_partial_vs_full 10-fold Acc {:.5f}".format(epoch, rank1))
+        logging.info("Epoch {}: LFW cross_partial_vs_full BestAcc: {}".format(epoch, ver_accs))
 
 
         if cfg.save_all_states:

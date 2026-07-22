@@ -1,9 +1,11 @@
+import json
 import numbers
 import os
 import queue as Queue
 import threading
 from typing import Iterable
 
+import cv2
 import numpy as np
 import torch
 from functools import partial
@@ -251,8 +253,136 @@ class ClipDataset(Dataset):
 def clip_paired_collate(batch):
     partial, full, lbls = zip(*batch)
     return torch.stack(partial), torch.stack(full), torch.tensor(lbls)
-    
-    
+
+
+def load_eye_center_metadata(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def crop_roi(bgr, ratio, center_y, width_ratio=1.0):
+    """Canonical ROI crop: a `ratio`-tall, `width_ratio`-wide band centered
+    exactly on the detected eye-center row, pasted onto a same-size black
+    canvas. No fixed pixel shift/margin — used identically for both the
+    on-the-fly glint360k training crops and the LFW validation crops."""
+    H, W = bgr.shape[:2]
+    roi_h = round(ratio * H)
+    roi_w = round(width_ratio * W)
+    cx = W // 2
+    cy = round(center_y)
+    y1 = max(0, cy - roi_h // 2)
+    y2 = min(H, y1 + roi_h)
+    x1 = max(0, cx - roi_w // 2)
+    x2 = min(W, x1 + roi_w)
+    canvas = np.zeros_like(bgr)
+    canvas[y1:y2, x1:x2] = bgr[y1:y2, x1:x2]
+    return canvas
+
+
+def get_onthefly_clip_dataloader(
+    root_dir,
+    metadata,
+    ratio,
+    local_rank,
+    batch_size,
+    seed = 2048,
+    num_workers = 0,
+    train = True,
+    width_ratio = 1.0,
+    ) -> Iterable:
+    """Same (img_ff, img_pf, lbl) contract as get_clip_dataloader, but the
+    partial-face crop is produced in-memory from a single full-face image
+    root + precomputed eye-center metadata, instead of reading a separately
+    materialized cropped-image folder (see OnTheFlyClipDataset)."""
+    dataset = OnTheFlyClipDataset(
+        root_dir=root_dir, metadata=metadata, ratio=ratio, width_ratio=width_ratio,
+        transform=get_transform(augmentations=False),
+    )
+
+    if not train:
+        return DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=False,
+            drop_last=False,
+            collate_fn=clip_paired_collate,
+        )
+
+    rank, world_size = get_dist_info()
+    train_sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=seed)
+
+    if seed is None:
+        init_fn = None
+    else:
+        init_fn = partial(worker_init_fn, num_workers=num_workers, rank=rank, seed=seed)
+
+    train_loader = DataLoaderX(
+        local_rank=local_rank,
+        dataset=dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=init_fn,
+        collate_fn=clip_paired_collate,
+    )
+    return train_loader
+
+
+class OnTheFlyClipDataset(Dataset):
+    """Single-root ROI dataset: crops the partial-face view in-memory from a
+    full glint360k image + precomputed eye-center metadata (see
+    data_scratches/build_eye_center_metadata.py), instead of reading a
+    separately materialized cropped-image folder. Avoids duplicating the
+    full ~21M-image dataset on disk once per ROI ratio.
+
+    metadata: dict keyed "<id>/<filename>" -> {"detected": bool, "center_y": float}
+    (see load_eye_center_metadata). Only detected==True entries are used —
+    identical across all ratios, since detection is ratio-independent, so the
+    identity/label set (and num_classes) stays consistent across the sweep.
+    """
+
+    def __init__(self, root_dir, metadata, ratio, width_ratio=1.0, transform=None):
+        self.root_dir = Path(root_dir)
+        self.ratio = ratio
+        self.width_ratio = width_ratio
+        self.transform = transform
+        self.metadata = metadata
+
+        self.items = [k for k, meta in metadata.items() if meta.get("detected", False)]
+        assert len(self.items) > 0
+
+        id_names = sorted({k.split("/", 1)[0] for k in self.items}, key=int)
+        self.id_to_label = {name: i for i, name in enumerate(id_names)}
+        self.num_classes = len(id_names)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, idx):
+        key = self.items[idx]
+        id_name, filename = key.split("/", 1)
+        lbl = self.id_to_label[id_name]
+
+        bgr = cv2.imread(str(self.root_dir / id_name / filename))
+        center_y = self.metadata[key]["center_y"]
+        partial_bgr = crop_roi(bgr, self.ratio, center_y, self.width_ratio)
+
+        img_ff = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+        img_pf = Image.fromarray(cv2.cvtColor(partial_bgr, cv2.COLOR_BGR2RGB))
+
+        if self.transform:
+            img_ff = self.transform(img_ff)
+            img_pf = self.transform(img_pf)
+
+        return img_ff, img_pf, lbl
+
+
+
 class PairedImageDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         # self.images_a = list(Path(root_dir,'imageFolder_split_narrow_eyes/train').glob('*/*'))

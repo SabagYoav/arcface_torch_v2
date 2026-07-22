@@ -6,8 +6,11 @@ from easydict import EasyDict as edict
 # warmup) rather than copied from the R50 config, so this is a "best-effort per
 # architecture" comparison, NOT an identical-hyperparameter one. Shared with the
 # R50 run: network-agnostic pieces (embedding_size, temperature, teacher, data,
-# batch_size=64 so CLIP in-batch negatives match). The orchestrator overrides
-# root_ff / root_pf / val_targets / train_targets / output / num_classes / num_image.
+# batch_size=64 so CLIP in-batch negatives match). training_multi_loops.py (the
+# orchestrator) overrides use_onthefly_dataset / root_dir / eye_center_metadata_path
+# / roi_ratio / output / num_classes / num_image per ROI ratio in the sweep;
+# validation runs against LFW (see utils/clip_verifications_utils.py), not a
+# held-out glint360k split.
 
 config = edict()
 config.margin_list = (1.0, 0.0, 0.4)
@@ -27,20 +30,11 @@ config.dali = False
 config.dali_aug = False
 config.optimizer = "adamw"
 
-# Default (overridden by the orchestrator). Points at the quick-run subset.
-ff_dir = "/media/yoav/Yoav/datasets/variants_dataset_subset/ratio_100"
-pf_dir = "/media/yoav/Yoav/datasets/variants_dataset_subset/ratio_100"
-
-config.root_ff = f"{ff_dir}/train"
-config.root_pf = f"{pf_dir}/train"
-config.val_targets = [f"{ff_dir}/val", f"{pf_dir}/val"]
-config.train_targets = [f"{ff_dir}/train", f"{pf_dir}/train"]
-
 config.num_epoch = 20                    # ViT from scratch needs a long schedule to converge (3 was far too few)
 config.warmup_epoch = 4                  # longer warmup stabilizes early ViT training
 config.num_workers = 2                   # fewer CPU workers => less heat (helps avoid the thermal shutdown)
 
 config.teacher_network = "r50"           # teacher (same as r50-vs-r50)
-config.teacher_model_path = "work_dirs/config_glint360k_subset_fullface_best_18_01_26/best_model.pt"
+config.teacher_model_path = "16backbone.pth"
 
 config.temperature = 0.07
