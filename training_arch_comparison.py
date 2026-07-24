@@ -22,12 +22,15 @@ EXP_NAME = os.environ.get("EXP_NAME", "exp_arch_comparison")
 EXP_ROOT = f"work_dirs/{EXP_NAME}"
 
 # (architecture name matching backbones.get_model(), batch_size)
+# Batch sizes tuned to fill most of a 49GB A6000 (measured via a synthetic
+# forward+backward probe matching train_v4_clip.py's actual clip_face_loss
+# path; real usage runs ~9% higher, still leaves comfortable headroom).
 ARCHITECTURES = [
-    ("r50", 256),
-    ("r100", 256),
-    ("vit_b16", 128),
-    ("swin_tiny", 128),
-    ("mobilevit_s", 128),
+    ("r50", 576),
+    ("r100", 448),
+    ("vit_b16", 768),
+    ("swin_tiny", 832),
+    ("mobilevit_s", 768),
 ]
 ROI_RATIOS = [0.15, 0.2, 0.4, 0.6, 0.8, 1.0]
 

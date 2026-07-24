@@ -155,6 +155,14 @@ def main(args):
             backbone.load_state_dict(dict_checkpoint["state_dict_backbone"])
             opt.load_state_dict(dict_checkpoint["state_optimizer"])
             lr_scheduler.load_state_dict(dict_checkpoint["state_lr_scheduler"])
+            # The scheduler's state_dict includes total_iters/warmup_iters as they
+            # were WHEN THE CHECKPOINT WAS SAVED. If cfg.num_epoch (or warmup_epoch)
+            # has since changed, re-apply the freshly-computed horizon from the
+            # current config so the decay curve targets the current schedule length
+            # instead of silently reverting to the old one — this is what makes
+            # changing num_epoch and resuming safe.
+            lr_scheduler.total_iters = cfg.total_step
+            lr_scheduler.warmup_iters = cfg.warmup_step
             del dict_checkpoint
         except:
             print("No checkpoint found, training from scratch.")
@@ -190,10 +198,6 @@ def main(args):
 
     ### training loop ###
     for epoch in range(start_epoch, cfg.num_epoch):
-        if epoch >=10:
-            logging.info("Skipping epoch {}".format(epoch))
-            continue
-        
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
 
