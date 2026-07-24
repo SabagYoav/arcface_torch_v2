@@ -99,5 +99,30 @@ def get_model(name, **kwargs):
             img_size=112, patch_size=9, num_classes=num_features, embed_dim=1024, depth=48,
             num_heads=8, drop_path_rate=0.1, norm_layer="ln", mask_ratio=0, using_checkpoint=True)
 
+    elif name == "vit_b16":
+        # Canonical ViT-Base/16 (patch_size=16, embed_dim=768, depth=12, heads=12) —
+        # NOT the same as "vit_b" above, which is this repo's own face-tuned
+        # patch_size=9/depth=24 variant inherited from the ArcFace-ViT paper's
+        # T/S/B/L/H naming, not the original ImageNet ViT-B/16 paper's sizing.
+        num_features = kwargs.get("num_features", 512)
+        from .vit import VisionTransformer
+        return VisionTransformer(
+            img_size=112, patch_size=16, num_classes=num_features, embed_dim=768, depth=12,
+            num_heads=12, drop_path_rate=0.1, norm_layer="ln", mask_ratio=0.1)
+
+    elif name == "swin_tiny":
+        num_features = kwargs.get("num_features", 512)
+        fp16 = kwargs.get("fp16", False)
+        from .timm_wrapper import TimmBackboneWrapper
+        return TimmBackboneWrapper(
+            "swin_tiny_patch4_window7_224", num_features=num_features, fp16=fp16, img_size=112)
+
+    elif name == "mobilevit_s":
+        num_features = kwargs.get("num_features", 512)
+        fp16 = kwargs.get("fp16", False)
+        from .timm_wrapper import TimmBackboneWrapper
+        return TimmBackboneWrapper(
+            "mobilevit_s", num_features=num_features, fp16=fp16, img_size=112)
+
     else:
         raise ValueError()

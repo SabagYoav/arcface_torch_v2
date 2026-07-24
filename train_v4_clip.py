@@ -164,9 +164,15 @@ def main(args):
         num_space = 25 - len(key)
         logging.info(": " + key + " " * num_space + str(value))
 
+    glint_val_metadata = None
+    if getattr(cfg, "glint_val_metadata_path", None):
+        glint_val_metadata = load_eye_center_metadata(cfg.glint_val_metadata_path)
+
     clip_verification = ClipVerification(
         ratio=cfg.roi_ratio,
-        summary_writer=summary_writer, wandb_logger = None, work_dir=cfg.output
+        summary_writer=summary_writer, wandb_logger = None, work_dir=cfg.output,
+        glint_val_root=getattr(cfg, "glint_val_root", None),
+        glint_val_metadata=glint_val_metadata,
     )
 
     callback_logging = CallBackLogging(
