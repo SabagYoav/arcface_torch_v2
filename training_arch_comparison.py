@@ -43,7 +43,7 @@ ARCHITECTURES = [
     ("swin_tiny", 832),
     ("mobilevit_s", 768),
 ]
-ROI_RATIOS = [0.15, 0.2, 0.4]
+ROI_RATIOS = [0.15, 0.2, 0.4, 0.6, 1.0]
 
 
 def build_scoped_metadata():
