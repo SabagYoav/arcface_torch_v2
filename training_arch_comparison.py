@@ -33,17 +33,21 @@ EXP_NAME = os.environ.get("EXP_NAME", f"exp_arch_comparison_{INSTANCES_PER_ID}pe
 EXP_ROOT = f"work_dirs/{EXP_NAME}"
 
 # (architecture name matching backbones.get_model(), batch_size)
-# Batch sizes tuned to fill most of a 49GB A6000 (measured via a synthetic
-# forward+backward probe matching train_v4_clip.py's actual clip_face_loss
-# path; real usage runs ~9% higher, still leaves comfortable headroom).
+# Kept constant across architectures (batch size is a training-dynamics
+# variable for a CLIP-style in-batch-negatives loss, so letting it vary would
+# confound the architecture comparison). 448 is r100's proven-safe ceiling
+# (measured via a probe matching train_v4_clip.py's real clip_face_loss path;
+# 512 came too close to the 49GB limit) — the tightest of the 5 architectures,
+# so it's also safe for the other 4.
+COMMON_BATCH_SIZE = 448
 ARCHITECTURES = [
-    ("r50", 576),
-    ("r100", 448),
-    ("vit_b16", 768),
-    ("swin_tiny", 832),
-    ("mobilevit_s", 768),
+    ("r50", COMMON_BATCH_SIZE),
+    ("r100", COMMON_BATCH_SIZE),
+    ("vit_b16", COMMON_BATCH_SIZE),
+    ("swin_tiny", COMMON_BATCH_SIZE),
+    ("mobilevit_s", COMMON_BATCH_SIZE),
 ]
-ROI_RATIOS = [0.15, 0.2, 0.4, 0.6, 1.0]
+ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
 
 def build_scoped_metadata():
