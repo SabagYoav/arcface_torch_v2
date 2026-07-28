@@ -46,6 +46,7 @@ ARCHITECTURES = [
     ("vit_b16", COMMON_BATCH_SIZE),
     ("swin_tiny", COMMON_BATCH_SIZE),
     ("mobilevit_s", COMMON_BATCH_SIZE),
+    ("swin_base", COMMON_BATCH_SIZE),
 ]
 ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
