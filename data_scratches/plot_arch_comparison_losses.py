@@ -9,9 +9,6 @@ import matplotlib.pyplot as plt
 
 EXP_ROOT = Path("work_dirs/exp_arch_comparison_10perid")
 ARCHITECTURES = ["r50", "r100", "vit_b16", "swin_tiny", "mobilevit_s", "swin_base"]
-# Display-only relabeling (r100 is iresnet100, not the folder/config name --
-# folders/configs/code still say "r100"; this only affects the figure).
-DISPLAY_NAME = {"r100": "R101"}
 ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
 LINE_RE = re.compile(r"Loss ([\d.]+)\s+LearningRate .*?Epoch: (\d+)")
@@ -45,7 +42,7 @@ def main():
             if not epochs:
                 continue
             any_data = True
-            ax.plot(epochs, losses, label=DISPLAY_NAME.get(arch, arch), marker="o", linewidth=1.5)
+            ax.plot(epochs, losses, label=arch, marker="o", linewidth=1.5)
         ax.set_title(f"ROI ratio {ratio}")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("CLIP loss (mean per epoch)")

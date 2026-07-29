@@ -169,16 +169,12 @@ def plot_comparison(results: dict, filename: str = None):
         arch, _, ratio_tag = tag.rpartition("_ratio_")
         by_arch.setdefault(arch, []).append((int(ratio_tag) / 100.0, res.get("best_acc", float("nan"))))
 
-    # Display-only relabeling (r100 is iresnet100, not the folder/config name --
-    # folders/configs/code still say "r100"; this only affects the figure).
-    display_name = {"r100": "R101"}
-
     plt.figure(figsize=(8, 5))
     for arch, points in by_arch.items():
         points.sort()
         xs = [int(round(r * 100)) for r, _ in points]
         ys = [a for _, a in points]
-        plt.plot(xs, ys, marker="o", label=display_name.get(arch, arch))
+        plt.plot(xs, ys, marker="o", label=arch)
 
     plt.xlabel("ROI ratio (% of face height visible)")
     plt.ylabel("Best verification accuracy (LFW cross_partial_vs_full)")
