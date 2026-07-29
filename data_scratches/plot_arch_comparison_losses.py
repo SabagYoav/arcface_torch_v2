@@ -8,7 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 EXP_ROOT = Path("work_dirs/exp_arch_comparison_10perid")
-ARCHITECTURES = ["r50", "r100", "vit_b16", "swin_tiny", "mobilevit_s", "swin_base"]
+ARCHITECTURES = ["r50", "r100", "vit_b16", "mobilevit_s", "swin_base"]
 ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
 LINE_RE = re.compile(r"Loss ([\d.]+)\s+LearningRate .*?Epoch: (\d+)")
