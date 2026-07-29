@@ -11,6 +11,17 @@ EXP_ROOT = Path("work_dirs/exp_arch_comparison_10perid")
 ARCHITECTURES = ["r50", "r100", "vit_b16", "mobilevit_s", "swin_base"]
 ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
+# Kept in sync with training_arch_comparison.py's ARCH_COLORS so the same
+# architecture is the same color in both the accuracy and loss figures.
+ARCH_COLORS = {
+    "r50": "tab:blue",
+    "r100": "tab:orange",
+    "vit_b16": "tab:green",
+    "swin_tiny": "tab:red",
+    "mobilevit_s": "tab:purple",
+    "swin_base": "tab:brown",
+}
+
 LINE_RE = re.compile(r"Loss ([\d.]+)\s+LearningRate .*?Epoch: (\d+)")
 
 
@@ -42,7 +53,7 @@ def main():
             if not epochs:
                 continue
             any_data = True
-            ax.plot(epochs, losses, label=arch, marker="o", linewidth=1.5)
+            ax.plot(epochs, losses, label=arch, marker="o", linewidth=1.5, color=ARCH_COLORS.get(arch))
         ax.set_title(f"ROI ratio {ratio}")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("CLIP loss (mean per epoch)")

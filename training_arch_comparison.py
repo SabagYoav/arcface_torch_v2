@@ -39,6 +39,19 @@ EXP_ROOT = f"work_dirs/{EXP_NAME}"
 # (measured via a probe matching train_v4_clip.py's real clip_face_loss path;
 # 512 came too close to the 49GB limit) — the tightest of the 5 architectures,
 # so it's also safe for the other 4.
+# Fixed per-architecture plot color, shared with data_scratches/
+# plot_arch_comparison_losses.py so the same architecture is the same color
+# across both figures (matplotlib's default cycling depends on plot order,
+# which isn't guaranteed to match between the two scripts).
+ARCH_COLORS = {
+    "r50": "tab:blue",
+    "r100": "tab:orange",
+    "vit_b16": "tab:green",
+    "swin_tiny": "tab:red",
+    "mobilevit_s": "tab:purple",
+    "swin_base": "tab:brown",
+}
+
 COMMON_BATCH_SIZE = 448
 ARCHITECTURES = [
     ("r50", COMMON_BATCH_SIZE),
@@ -174,7 +187,7 @@ def plot_comparison(results: dict, filename: str = None):
         points.sort()
         xs = [int(round(r * 100)) for r, _ in points]
         ys = [a for _, a in points]
-        plt.plot(xs, ys, marker="o", label=arch)
+        plt.plot(xs, ys, marker="o", label=arch, color=ARCH_COLORS.get(arch))
 
     plt.xlabel("ROI ratio (% of face height visible)")
     plt.ylabel("Best verification accuracy (LFW cross_partial_vs_full)")
