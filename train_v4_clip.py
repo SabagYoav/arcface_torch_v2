@@ -45,6 +45,14 @@ def clip_face_loss(emb_partial_face, emb_full_face, temperature=0.07):
     return 0.5 * (loss_p2f + loss_f2p)
 
 
+def mse_face_loss(emb_partial_face, emb_full_face):
+    # Direct embedding-regression distillation loss (no in-batch negatives):
+    # pull each partial embedding toward its own paired full embedding only.
+    emb_partial_face = F.normalize(emb_partial_face, dim=1)
+    emb_full_face = F.normalize(emb_full_face, dim=1)
+    return F.mse_loss(emb_partial_face, emb_full_face)
+
+
 def unnormalize(img_tensor):
     mean = torch.tensor([0.5, 0.5, 0.5], device=img_tensor.device).view(-1, 1, 1)
     std = torch.tensor([0.5, 0.5, 0.5], device=img_tensor.device).view(-1, 1, 1)
@@ -163,6 +171,13 @@ def main(args):
             # changing num_epoch and resuming safe.
             lr_scheduler.total_iters = cfg.total_step
             lr_scheduler.warmup_iters = cfg.warmup_step
+            # The scheduler is chained (each step multiplies the CURRENT lr), so
+            # the restored lr must also be put on the new curve -- otherwise a
+            # run that finished (lr decayed to exactly 0) and is extended to
+            # more epochs would stay at lr=0 forever.
+            for group, lr in zip(opt.param_groups, lr_scheduler._get_closed_form_lr()):
+                group["lr"] = lr
+            lr_scheduler._last_lr = [group["lr"] for group in opt.param_groups]
             del dict_checkpoint
         except:
             print("No checkpoint found, training from scratch.")
@@ -211,7 +226,13 @@ def main(args):
             emb_partial = backbone(partial_face_img)
             emb_full = teacher_backbone(full_face_img).detach()
 
-            loss = clip_face_loss(emb_partial, emb_full, temperature=cfg.temperature)
+            loss_type = getattr(cfg, "loss_type", "infonce")
+            if loss_type == "mse":
+                loss = mse_face_loss(emb_partial, emb_full)
+            elif loss_type == "infonce":
+                loss = clip_face_loss(emb_partial, emb_full, temperature=cfg.temperature)
+            else:
+                raise ValueError(f"Unknown cfg.loss_type: {loss_type!r}")
 
             if cfg.fp16:
                 amp.scale(loss).backward()

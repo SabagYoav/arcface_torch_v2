@@ -3,15 +3,15 @@ from easydict import EasyDict as edict
 
 config = edict()
 config.margin_list = (1.0, 0.0, 0.4)
-config.network = 'vit_s_dp005_mask_0'
+config.network = 'swin_base'
 config.resume = True
 config.save_all_states = True
-config.output = 'work_dirs/exp_clip_r50_vs_vit_full/clip_ratio_15'
+config.output = 'work_dirs/exp_clip_r50_vs_swin_glint/clip_ratio_15'
 config.embedding_size = 512
 config.sample_rate = 3.0
 config.interclass_filtering_threshold = 0
 config.fp16 = True
-config.batch_size = 560
+config.batch_size = 576
 config.optimizer = 'adamw'
 config.lr = 0.0003
 config.weight_decay = 0.1

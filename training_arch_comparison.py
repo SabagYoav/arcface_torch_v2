@@ -191,7 +191,7 @@ def plot_comparison(results: dict, filename: str = None):
 
     plt.xlabel("ROI ratio (% of face height visible)")
     plt.ylabel("Best verification accuracy (LFW cross_partial_vs_full)")
-    plt.title("Architecture comparison — glint360k subset (36k/9k identities)")
+    plt.title("Architecture comparison — glint360k subset")
     plt.grid(True, alpha=0.3)
     plt.gca().invert_xaxis()
     plt.legend()

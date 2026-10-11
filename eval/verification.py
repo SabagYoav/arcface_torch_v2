@@ -463,7 +463,17 @@ def test_image_dataloader(data_set, backbone, batch_size, nfolds=10):
     return accuracy, embeddings_list
 
 
-def test_fold(embeddings, labels):
+def test_fold(embeddings, labels, calib_frac=0.5, seed=0):
+    """Open-set accuracy/TAR/FAR for one fold.
+
+    The decision threshold (and the FAR=1e-4 operating point) is fit ONLY on
+    a "calibration" half of this fold's identities; the accuracy/TAR/FAR we
+    report is then measured on pairs built from the OTHER, disjoint half of
+    identities. Calibrating and reporting on the same probes would let the
+    threshold search implicitly overfit to the exact scores it's later
+    scored on, inflating the reported FAR/accuracy -- this keeps them
+    strictly separate, same as the k-fold CV used elsewhere (LFW, CFP, ...).
+    """
 
     E = torch.cat(embeddings, dim=0)  # [N, D]
     L = torch.cat(labels, dim=0)      # [N]
@@ -472,43 +482,77 @@ def test_fold(embeddings, labels):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     E = E.to(device)
     L = L.to(device)
-    S = E @ E.T
 
-    same = L.unsqueeze(0) == L.unsqueeze(1)
-    diag = ~torch.eye(len(L), dtype=torch.bool, device=device)
+    unique_ids = L.unique().tolist()
+    rng = random.Random(seed)
+    rng.shuffle(unique_ids)
+    n_calib = max(1, int(round(len(unique_ids) * calib_frac)))
+    calib_ids = set(unique_ids[:n_calib])
+    report_ids = set(unique_ids[n_calib:])
 
-    pos = S[same & diag]
-    neg = S[~same & diag]
+    def pos_neg_scores(id_set):
+        mask = torch.tensor([l in id_set for l in L.tolist()], device=device)
+        sub_E, sub_L = E[mask], L[mask]
+        if len(sub_L) < 2:
+            return None, None
+        S = sub_E @ sub_E.T
+        same = sub_L.unsqueeze(0) == sub_L.unsqueeze(1)
+        diag = ~torch.eye(len(sub_L), dtype=torch.bool, device=device)
+        pos, neg = S[same & diag], S[~same & diag]
+        if len(pos) == 0 or len(neg) == 0:
+            return None, None
+        return pos, neg
 
-    # balance
+    calib_pos, calib_neg = pos_neg_scores(calib_ids)
+    report_pos, report_neg = pos_neg_scores(report_ids)
+    if calib_pos is None or report_pos is None:
+        # Too few identities in this fold for a calibration/report split
+        # (e.g. a short trailing fold) -- skip rather than silently falling
+        # back to scoring a threshold on the same data it calibrated on.
+        return None
+
     w_pos = 1.0
-    w_neg = len(pos) / len(neg)
+    w_neg = len(calib_pos) / len(calib_neg)
 
     thresholds = torch.linspace(-0.2, 1.0, 600, device=device)
-    best_acc, best_thr, best_tar, best_tar_far = 0.0, 0.0, 0.0, 0.0
-    tar_at_far_1e4 = 0.0
+    best_acc, best_thr = 0.0, 0.0
+    far_thr, best_calib_tar_at_far = None, 0.0
 
     for t in thresholds:
-        tp = (pos > t).sum().float()
-        fn = (pos <= t).sum().float()
-        tn = (neg <= t).sum().float()
-        fp = (neg > t).sum().float()
+        tp = (calib_pos > t).sum().float()
+        fn = (calib_pos <= t).sum().float()
+        tn = (calib_neg <= t).sum().float()
+        fp = (calib_neg > t).sum().float()
         acc = (w_pos * tp + w_neg * tn) / (w_pos * (tp + fn) + w_neg * (tn + fp))
-        tar = tp/(tp + fn + 1e-8)
-        far = fp/(fp + tn + 1e-8)
-
         if acc > best_acc:
             best_acc = acc.item()
             best_thr = t.item()
-        if tar > best_tar:
-            best_tar = tar.item()
-            best_tar_far = far.item()
 
-        # TAR@FAR=1e-4: find highest TAR where FAR <= 1e-4
-        if far.item() <= 1e-4 and tar.item() > tar_at_far_1e4:
-            tar_at_far_1e4 = tar.item()
+        # calibrate the FAR=1e-4 operating threshold, picking whichever
+        # threshold maximizes calibration-side TAR subject to FAR <= 1e-4
+        far = fp / (fp + tn + 1e-8)
+        tar = tp / (tp + fn + 1e-8)
+        if far.item() <= 1e-4 and tar.item() > best_calib_tar_at_far:
+            best_calib_tar_at_far = tar.item()
+            far_thr = t.item()
 
-    return best_acc, best_thr, best_tar, best_tar_far, tar_at_far_1e4
+    # ---- report accuracy/TAR/FAR on the held-out identities, at the
+    # thresholds fixed above from the calibration identities only ----
+    t = best_thr
+    tp = (report_pos > t).sum().float()
+    fn = (report_pos <= t).sum().float()
+    tn = (report_neg <= t).sum().float()
+    fp = (report_neg > t).sum().float()
+    report_acc = ((tp + tn) / (tp + fn + tn + fp)).item()
+    report_tar = (tp / (tp + fn + 1e-8)).item()
+    report_far = (fp / (fp + tn + 1e-8)).item()
+
+    tar_at_far_1e4 = 0.0
+    if far_thr is not None:
+        tp2 = (report_pos > far_thr).sum().float()
+        tar_at_far_1e4 = (tp2 / (len(report_pos) + 1e-8)).item()
+
+    return report_acc, best_thr, report_tar, report_far, tar_at_far_1e4
     
 
 @torch.no_grad()
@@ -529,18 +573,22 @@ def test_image_dataloader_with_fold(dataloader, backbone, max_fold_images=500, k
             labels.append(lbls.cpu())
 
             if sum(e.shape[0] for e in embeddings) >= max_fold_images:
-                acc, thresh, tar, far, tar_at_far_1e4 = test_fold(embeddings, labels)
+                fold_result = test_fold(embeddings, labels, seed=fold)
+                if fold_result is not None:
+                    acc, thresh, tar, far, tar_at_far_1e4 = fold_result
+                    accs.append(acc)
+                    threshs.append(thresh)
+                    tar_at_far_1e4_list.append(tar_at_far_1e4)
+                embeddings, labels = [], []
+                fold += 1
+
+        if len(accs) == 0 and len(embeddings) > 0:
+            fold_result = test_fold(embeddings, labels, seed=fold)
+            if fold_result is not None:
+                acc, thresh, tar, far, tar_at_far_1e4 = fold_result
                 accs.append(acc)
                 threshs.append(thresh)
                 tar_at_far_1e4_list.append(tar_at_far_1e4)
-                embeddings, labels = [], []
-                fold += 1
-        
-        if len(accs) == 0 and len(embeddings) > 0:
-            acc, thresh, tar, far, tar_at_far_1e4 = test_fold(embeddings, labels)
-            accs.append(acc)
-            threshs.append(thresh)
-            tar_at_far_1e4_list.append(tar_at_far_1e4)
 
     mean_acc = np.mean(accs)
     best_acc = np.max(accs)
