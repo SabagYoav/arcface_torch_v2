@@ -282,3 +282,4 @@ logs/
 # (Flash Audio, bookmarked)
 *.F4B
 
+work_dirs/
