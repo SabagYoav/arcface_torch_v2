@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import argparse
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -13,29 +14,61 @@ TRAIN_DIR = Path("/DATA/glint360k_arch_comparison/train")
 VAL_DIR = Path("/DATA/glint360k_arch_comparison/val")
 MANIFEST_PATH = Path("/DATA/glint360k_arch_comparison/sample_manifest.json")
 FULL_METADATA_PATH = Path("/DATA/glint360k_download/eye_center_metadata/center_eyes_metadata.json")
-TRAIN_METADATA_PATH = Path("/DATA/glint360k_arch_comparison/train_eye_center_metadata.json")
-VAL_METADATA_PATH = Path("/DATA/glint360k_arch_comparison/val_eye_center_metadata.json")
+
+# Balanced-per-identity re-run: cap training images per identity instead of
+# using every available image (avg ~58/id) — controls identity-frequency as a
+# confound in the comparison. Written to a NEW file (not overwriting the
+# original uncapped metadata) and run under a NEW EXP_NAME, so the prior
+# uncapped run's outputs under work_dirs/exp_arch_comparison/ are untouched.
+INSTANCES_PER_ID = 10
+INSTANCES_SEED = 123
+TRAIN_METADATA_PATH = Path(
+    f"/DATA/glint360k_arch_comparison/train_eye_center_metadata_{INSTANCES_PER_ID}perid.json"
+)
+VAL_METADATA_PATH = Path("/DATA/glint360k_arch_comparison/val_eye_center_metadata.json")  # unchanged, uncapped
 TEACHER_MODEL_PATH = Path("16backbone.pth")
 
 BASE_CONFIG = "configs/experiment_arch_comparison_clip.py"
-EXP_NAME = os.environ.get("EXP_NAME", "exp_arch_comparison")
+EXP_NAME = os.environ.get("EXP_NAME", f"exp_arch_comparison_{INSTANCES_PER_ID}perid")
 EXP_ROOT = f"work_dirs/{EXP_NAME}"
 
 # (architecture name matching backbones.get_model(), batch_size)
+# Kept constant across architectures (batch size is a training-dynamics
+# variable for a CLIP-style in-batch-negatives loss, so letting it vary would
+# confound the architecture comparison). 448 is r100's proven-safe ceiling
+# (measured via a probe matching train_v4_clip.py's real clip_face_loss path;
+# 512 came too close to the 49GB limit) — the tightest of the 5 architectures,
+# so it's also safe for the other 4.
+# Fixed per-architecture plot color, shared with data_scratches/
+# plot_arch_comparison_losses.py so the same architecture is the same color
+# across both figures (matplotlib's default cycling depends on plot order,
+# which isn't guaranteed to match between the two scripts).
+ARCH_COLORS = {
+    "r50": "tab:blue",
+    "r100": "tab:orange",
+    "vit_b16": "tab:green",
+    "swin_tiny": "tab:red",
+    "mobilevit_s": "tab:purple",
+    "swin_base": "tab:brown",
+}
+
+COMMON_BATCH_SIZE = 448
 ARCHITECTURES = [
-    ("r50", 256),
-    ("r100", 256),
-    ("vit_b16", 128),
-    ("swin_tiny", 128),
-    ("mobilevit_s", 128),
+    ("r50", COMMON_BATCH_SIZE),
+    ("r100", COMMON_BATCH_SIZE),
+    ("vit_b16", COMMON_BATCH_SIZE),
+    ("swin_tiny", COMMON_BATCH_SIZE),
+    ("mobilevit_s", COMMON_BATCH_SIZE),
+    ("swin_base", COMMON_BATCH_SIZE),
 ]
-ROI_RATIOS = [0.15, 0.2, 0.4, 0.6, 0.8, 1.0]
+ROI_RATIOS = [0.15, 0.2, 0.4, 0.6]
 
 
 def build_scoped_metadata():
     """Reuse the full glint360k eye-center metadata (already computed for the
     main sweep) filtered down to just this comparison's sampled identities —
-    no new buffalo_l detection needed."""
+    no new buffalo_l detection needed. Train entries are capped to
+    INSTANCES_PER_ID per identity (randomly, seeded); val is left uncapped."""
     if TRAIN_METADATA_PATH.exists() and VAL_METADATA_PATH.exists():
         print("Scoped metadata already built, skipping.")
         return
@@ -46,19 +79,33 @@ def build_scoped_metadata():
     train_ids = set(manifest["train_ids"])
     val_ids = set(manifest["val_ids"])
 
-    train_meta, val_meta = {}, {}
+    by_train_id = {}
+    val_meta = {}
     for k, v in full_metadata.items():
         id_name = k.split("/", 1)[0]
         if id_name in train_ids:
-            train_meta[k] = v
+            by_train_id.setdefault(id_name, []).append((k, v))
         elif id_name in val_ids:
             val_meta[k] = v
 
+    rng = random.Random(INSTANCES_SEED)
+    train_meta = {}
+    for id_name, items in by_train_id.items():
+        detected_items = [(k, v) for k, v in items if v.get("detected", False)]
+        rng.shuffle(detected_items)
+        for k, v in detected_items[:INSTANCES_PER_ID]:
+            train_meta[k] = v
+
     with open(TRAIN_METADATA_PATH, "w") as f:
         json.dump(train_meta, f)
-    with open(VAL_METADATA_PATH, "w") as f:
-        json.dump(val_meta, f)
-    print(f"Scoped metadata: {len(train_meta)} train entries, {len(val_meta)} val entries")
+    if not VAL_METADATA_PATH.exists():
+        with open(VAL_METADATA_PATH, "w") as f:
+            json.dump(val_meta, f)
+    print(
+        f"Scoped metadata: {len(train_meta)} train entries "
+        f"(capped at {INSTANCES_PER_ID}/id across {len(by_train_id)} identities), "
+        f"{len(val_meta)} val entries"
+    )
 
 
 def tag_for(arch: str, ratio: float) -> str:
@@ -140,11 +187,11 @@ def plot_comparison(results: dict, filename: str = None):
         points.sort()
         xs = [int(round(r * 100)) for r, _ in points]
         ys = [a for _, a in points]
-        plt.plot(xs, ys, marker="o", label=arch)
+        plt.plot(xs, ys, marker="o", label=arch, color=ARCH_COLORS.get(arch))
 
     plt.xlabel("ROI ratio (% of face height visible)")
     plt.ylabel("Best verification accuracy (LFW cross_partial_vs_full)")
-    plt.title("Architecture comparison — glint360k subset (36k/9k identities)")
+    plt.title("Architecture comparison — glint360k subset")
     plt.grid(True, alpha=0.3)
     plt.gca().invert_xaxis()
     plt.legend()

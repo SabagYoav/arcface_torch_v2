@@ -382,6 +382,92 @@ class OnTheFlyClipDataset(Dataset):
         return img_ff, img_pf, lbl
 
 
+def get_onthefly_mixed_roi_dataloader(
+    root_dir,
+    metadata,
+    ratio,
+    local_rank,
+    batch_size,
+    p_roi = 0.5,
+    seed = 2048,
+    num_workers = 0,
+    width_ratio = 1.0,
+    ) -> Iterable:
+    """Single-view (img, lbl) loader for classification training (ArcFace) on
+    a MIX of full faces and on-the-fly ROI crops — see OnTheFlyMixedRoiDataset."""
+    dataset = OnTheFlyMixedRoiDataset(
+        root_dir=root_dir, metadata=metadata, ratio=ratio, p_roi=p_roi,
+        width_ratio=width_ratio, transform=get_transform(augmentations=False),
+    )
+
+    rank, world_size = get_dist_info()
+    train_sampler = DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=True, seed=seed)
+
+    if seed is None:
+        init_fn = None
+    else:
+        init_fn = partial(worker_init_fn, num_workers=num_workers, rank=rank, seed=seed)
+
+    train_loader = DataLoaderX(
+        local_rank=local_rank,
+        dataset=dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True,
+        worker_init_fn=init_fn,
+    )
+    return train_loader
+
+
+class OnTheFlyMixedRoiDataset(Dataset):
+    """Same items/labels as OnTheFlyClipDataset (detected-only metadata
+    entries, so num_classes matches the distillation runs), but returns ONE
+    view per sample: the ROI crop with probability `p_roi`, otherwise the
+    full face. The view is re-drawn every time the sample is loaded, so each
+    image is seen in both forms across epochs.
+
+    Keeps only flat numpy arrays (no per-item Python objects), so it scales to
+    the full glint360k (~17M items) without each forked DataLoader worker
+    copying a multi-GB dict via refcount copy-on-write. Callers should drop
+    their own reference to `metadata` after construction."""
+
+    def __init__(self, root_dir, metadata, ratio, p_roi=0.5, width_ratio=1.0, transform=None):
+        self.root_dir = Path(root_dir)
+        self.ratio = ratio
+        self.width_ratio = width_ratio
+        self.transform = transform
+        self.p_roi = p_roi
+
+        items = [k for k, meta in metadata.items() if meta.get("detected", False)]
+        assert len(items) > 0
+        id_names = sorted({k.split("/", 1)[0] for k in items}, key=int)
+        id_to_label = {name: i for i, name in enumerate(id_names)}
+        self.num_classes = len(id_names)
+
+        self.keys = np.array(items, dtype=np.bytes_)
+        self.center_y = np.array([metadata[k]["center_y"] for k in items], dtype=np.float32)
+        self.labels = np.array([id_to_label[k.split("/", 1)[0]] for k in items], dtype=np.int64)
+
+    def __len__(self):
+        return len(self.keys)
+
+    def __getitem__(self, idx):
+        key = self.keys[idx].decode()
+        lbl = int(self.labels[idx])
+
+        bgr = cv2.imread(str(self.root_dir / key))
+        if random.random() < self.p_roi:
+            bgr = crop_roi(bgr, self.ratio, float(self.center_y[idx]), self.width_ratio)
+
+        img = Image.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+        if self.transform:
+            img = self.transform(img)
+        return img, lbl
+
+
 
 class PairedImageDataset(Dataset):
     def __init__(self, root_dir, transform=None):

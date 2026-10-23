@@ -117,6 +117,13 @@ def get_model(name, **kwargs):
         return TimmBackboneWrapper(
             "swin_tiny_patch4_window7_224", num_features=num_features, fp16=fp16, img_size=112)
 
+    elif name == "swin_base":
+        num_features = kwargs.get("num_features", 512)
+        fp16 = kwargs.get("fp16", False)
+        from .timm_wrapper import TimmBackboneWrapper
+        return TimmBackboneWrapper(
+            "swin_base_patch4_window7_224", num_features=num_features, fp16=fp16, img_size=112)
+
     elif name == "mobilevit_s":
         num_features = kwargs.get("num_features", 512)
         fp16 = kwargs.get("fp16", False)

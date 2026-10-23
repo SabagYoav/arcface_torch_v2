@@ -26,11 +26,11 @@ TEACHER_MODEL_PATH = Path("16backbone.pth")  # repo root
 #   EXP_NAME=exp_r50_vs_r50_clip BASE_CONFIG=configs/experiment_r50_vs_r50_clip.py python training_multi_loops.py
 # so each experiment writes to its own work_dirs/<EXP_NAME>/ folder (and its
 # result.json markers only block reruns of that same experiment).
-BASE_CONFIG = 'configs/experiment_r50_vs_vit_clip.py'
-# Distinct from the completed subset sweep's "exp_clip_r50_vs_vit" — must not
-# collide, or the resume-skip logic below would see those result.json markers
-# and think this (full-dataset) sweep is already done.
-EXP_NAME = os.environ.get("EXP_NAME", "exp_clip_r50_vs_vit_full")
+BASE_CONFIG = 'configs/experiment_r50_vs_swin_clip.py'
+# Distinct from the ViT-S full-dataset sweep's "exp_clip_r50_vs_vit_full" —
+# must not collide, or the resume-skip logic below would see those
+# result.json markers and think this (swin_base) sweep is already done.
+EXP_NAME = os.environ.get("EXP_NAME", "exp_clip_r50_vs_swin_glint")
 
 ROI_RATIOS = [0.15, 0.2, 0.3, 0.4, 0.6, 1.0]
 ROI_WIDTH_RATIO = 1.0   # relative to face width

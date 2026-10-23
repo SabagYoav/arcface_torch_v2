@@ -150,6 +150,11 @@ def main(args):
             module_partial_fc.load_state_dict(dict_checkpoint["state_dict_softmax_fc"])
             opt.load_state_dict(dict_checkpoint["state_optimizer"])
             lr_scheduler.load_state_dict(dict_checkpoint["state_lr_scheduler"])
+            # Re-apply the current config's schedule horizon (see train_v4_clip.py
+            # for the full rationale) so changing num_epoch/warmup_epoch and
+            # resuming targets the new schedule length instead of the checkpoint's.
+            lr_scheduler.total_iters = cfg.total_step
+            lr_scheduler.warmup_iters = cfg.warmup_step
             del dict_checkpoint
         except:
             print("No checkpoint found, training from scratch.")

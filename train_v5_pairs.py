@@ -1,5 +1,6 @@
 import argparse
 from fileinput import filename
+import json
 import logging
 import os
 from datetime import datetime
@@ -7,7 +8,8 @@ from datetime import datetime
 import numpy as np
 import torch
 from backbones import get_model
-from dataset import get_dataloader
+from dataset import get_dataloader, get_onthefly_mixed_roi_dataloader, load_eye_center_metadata
+from utils.clip_verifications_utils import ClipVerification
 from losses import CombinedMarginLoss
 from lr_scheduler import PolynomialLRWarmup
 from partial_fc_v2 import PartialFC_V2
@@ -53,7 +55,7 @@ except KeyError:
     world_size = 1
     distributed.init_process_group(
         backend="nccl",
-        init_method="tcp://127.0.0.1:12584",
+        init_method=f"tcp://127.0.0.1:{os.environ.get('MASTER_PORT', '12584')}",
         rank=rank,
         world_size=world_size,
     )
@@ -77,21 +79,49 @@ def main(args):
         else None
     )
     
-    train_loader = get_dataloader(
-        dataset_type = cfg.dataset_type,
-        root_dir = cfg.rec,
-        local_rank = local_rank,
-        batch_size = cfg.batch_size,
-        dali = cfg.dali,
-        dali_aug = cfg.dali_aug,
-        seed = cfg.seed,
-        num_workers = cfg.num_workers
-    )
+    if getattr(cfg, "use_onthefly_mixed_dataset", False):
+        # Classification on a mix of full faces and on-the-fly ROI crops
+        # (probability cfg.p_roi), from full-face images + eye-center metadata.
+        eye_center_metadata = load_eye_center_metadata(cfg.eye_center_metadata_path)
+        train_loader = get_onthefly_mixed_roi_dataloader(
+            root_dir=cfg.root_dir,
+            metadata=eye_center_metadata,
+            ratio=cfg.roi_ratio,
+            local_rank=local_rank,
+            batch_size=cfg.batch_size,
+            p_roi=cfg.p_roi,
+            seed=cfg.seed,
+            num_workers=cfg.num_workers,
+        )
+        del eye_center_metadata  # dataset keeps compact arrays; free the big dict
+        # None in the config = take from the dataset (e.g. full glint360k, whose
+        # detected-only counts are only known once the metadata is built).
+        for key, value in (("num_classes", train_loader.dataset.num_classes),
+                           ("num_image", len(train_loader.dataset))):
+            if cfg.get(key) is None:
+                cfg[key] = value
+            assert cfg[key] == value, f"cfg.{key}={cfg[key]} but dataset has {value}"
+    else:
+        train_loader = get_dataloader(
+            dataset_type = cfg.dataset_type,
+            root_dir = cfg.rec,
+            local_rank = local_rank,
+            batch_size = cfg.batch_size,
+            dali = cfg.dali,
+            dali_aug = cfg.dali_aug,
+            seed = cfg.seed,
+            num_workers = cfg.num_workers
+        )
 
     backbone = get_model(
         cfg.network, dropout=0.0, fp16=cfg.fp16, num_features=cfg.embedding_size).cuda()
-    
-    
+
+    # Fine-tuning: start the backbone from a pretrained checkpoint. The PartialFC
+    # head is always freshly initialized (its classes are this dataset's ids).
+    if getattr(cfg, "pretrained_backbone_path", None):
+        backbone.load_state_dict(torch.load(cfg.pretrained_backbone_path, map_location="cuda"))
+        logging.info(f"Initialized backbone from {cfg.pretrained_backbone_path}")
+
     backbone = torch.nn.parallel.DistributedDataParallel(
         module=backbone, broadcast_buffers=False, device_ids=[local_rank], bucket_cap_mb=16,
         find_unused_parameters=True)
@@ -124,8 +154,11 @@ def main(args):
             margin_loss, cfg.embedding_size, cfg.num_classes,
             cfg.sample_rate, False)
         module_partial_fc.train().cuda()
+        # backbone_lr_mult < 1 keeps a pretrained backbone from being wrecked by
+        # the large early gradients of the randomly initialized head.
         opt = torch.optim.AdamW(
-            params=[{"params": backbone.parameters()}, {"params": module_partial_fc.parameters()}],
+            params=[{"params": backbone.parameters(), "lr": cfg.lr * getattr(cfg, "backbone_lr_mult", 1.0)},
+                    {"params": module_partial_fc.parameters()}],
             lr=cfg.lr, weight_decay=cfg.weight_decay)
     else:
         raise
@@ -160,10 +193,46 @@ def main(args):
         num_space = 25 - len(key)
         logging.info(": " + key + " " * num_space + str(value))
 
-    callback_verification = CallBackVerification(
-        val_targets=cfg.val_targets, rec_prefix=cfg.rec, 
-        summary_writer=summary_writer, wandb_logger = None
-    )
+    use_roi_verification = getattr(cfg, "use_roi_verification", False)
+    if use_roi_verification:
+        glint_val_metadata = None
+        if getattr(cfg, "glint_val_metadata_path", None):
+            glint_val_metadata = load_eye_center_metadata(cfg.glint_val_metadata_path)
+        roi_verification = ClipVerification(
+            ratio=cfg.roi_ratio,
+            summary_writer=summary_writer, wandb_logger=None, work_dir=cfg.output,
+            glint_val_root=getattr(cfg, "glint_val_root", None),
+            glint_val_metadata=glint_val_metadata,
+        ) if rank == 0 else None
+
+        def callback_verification(global_step, backbone, epoch):
+            # One model embeds both sides (no teacher), same protocol as
+            # zero_shot_teacher_baseline.py. Returns ([best_acc], [acc_mean]).
+            # Only rank 0 evaluates; the others wait at the barrier.
+            if rank != 0:
+                distributed.barrier()
+                return [0.0], [0.0]
+            model = backbone.module
+            best_acc, acc_mean = roi_verification(
+                backbone_partial=model, backbone_full=model, global_step=global_step, epoch=epoch)
+            # Full-vs-full on the same LFW pairs: guards against forgetting full faces.
+            Ef = roi_verification._embed(model, roi_verification.full_tensor)
+            a, b = np.arange(0, Ef.shape[0], 2), np.arange(1, Ef.shape[0], 2)
+            full_stats = roi_verification._metrics((Ef[a] * Ef[b]).sum(dim=1).numpy())
+            logging.info(
+                f"[LFW][{global_step}] full_vs_full "
+                f"Acc={full_stats['acc_mean']:.4f}±{full_stats['acc_std']:.4f} "
+                f"AUC={full_stats['auc']:.4f} BestAcc={full_stats['best_acc']:.4f} "
+                f"TAR@1e-3={full_stats['tar@1e-3']:.4f}"
+            )
+            model.train()
+            distributed.barrier()
+            return [best_acc], [acc_mean]
+    else:
+        callback_verification = CallBackVerification(
+            val_targets=cfg.val_targets, rec_prefix=cfg.rec,
+            summary_writer=summary_writer, wandb_logger = None
+        )
     callback_logging = CallBackLogging(
         frequent=cfg.frequent,
         total_step=cfg.total_step,
@@ -200,8 +269,8 @@ def main(args):
         for _, (img, local_labels) in enumerate(train_loader):
             if _ == 0 :
                 save_image_grid(img, f"{cfg.output}/batch_grid_{cfg.batch_grid_tag}.jpg", nrow=4)
-            # if _ > 50:
-            #     break 
+            if getattr(cfg, "debug_max_steps", None) and _ >= cfg.debug_max_steps:
+                break  # smoke tests only: cut each epoch short
 
             global_step += 1
             local_embeddings = backbone(img)
@@ -243,7 +312,7 @@ def main(args):
         
         ## assuming acc_list[0] is the validation accuracy
         try:
-            if ver_accs[0] >= best_model_acc:
+            if rank == 0 and ver_accs[0] >= best_model_acc:
                 best_model_acc = ver_accs[0]
                 best_model_triplet_losses = ver_triplet_losses[0]
                 torch.save(backbone.module.state_dict(), os.path.join(cfg.output, "best_model.pt"))

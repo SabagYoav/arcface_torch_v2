@@ -26,7 +26,7 @@ config.dali = False
 config.dali_aug = False
 config.optimizer = "adamw"
 
-config.num_epoch = 10             # shorter than the main sweep's 20 -- exploratory comparison, smaller subset
+config.num_epoch = 10
 config.warmup_epoch = 2
 config.num_workers = 2
 
